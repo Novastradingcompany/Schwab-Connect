@@ -1,0 +1,9 @@
+streamlit
+yfinance
+pandas
+openpyxl
+reportlab
+python-dotenv
+openai
+
+

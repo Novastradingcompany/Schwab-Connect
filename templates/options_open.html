@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Open Options</h1>
+      <p class="subtitle">Live P/L with breakeven interval estimates (intrinsic-only).</p>
+    </div>
+    <div class="pill">Live</div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <form class="card form" method="get">
+    <div class="form-grid">
+      <label>
+        Interval ($)
+        <input type="number" step="0.5" min="0.5" name="step" value="{{ step }}">
+      </label>
+      <label>
+        Range (+/- steps)
+        <input type="number" step="1" min="1" name="span" value="{{ span }}">
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="button" type="submit">Update</button>
+    </div>
+  </form>
+
+  <section class="card">
+    <div class="card-title">Open Options</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Underlying</th>
+            <th>Type</th>
+            <th>Strike</th>
+            <th>Qty</th>
+            <th>Avg Price</th>
+            <th>Mark</th>
+            <th>Underlying</th>
+            <th>Current P/L</th>
+            <th>Breakeven</th>
+            {% for lvl in levels %}
+              <th>BE {{ "%+.2f"|format(lvl) }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td>{{ row.symbol }}</td>
+              <td>{{ row.underlying }}</td>
+              <td>{{ row.type }}</td>
+              <td>{{ row.strike }}</td>
+              <td>{{ row.qty }}</td>
+              <td>{{ row.avg_price }}</td>
+              <td>{{ row.mark }}</td>
+              <td>{{ row.underlying_last }}</td>
+              <td>{{ row.current_pl }}</td>
+              <td>{{ row.breakeven }}</td>
+              {% for lvl in levels %}
+                <td>{{ row.pl_levels.get(lvl) }}</td>
+              {% endfor %}
+            </tr>
+          {% else %}
+            <tr><td colspan="{{ 10 + levels|length }}">No option positions found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

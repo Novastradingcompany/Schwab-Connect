@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Trade Tickets</h1>
+      <p class="subtitle">Preview tickets before sending (order submission not wired yet).</p>
+    </div>
+    <div class="pill">Drafts</div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <section class="card">
+    <div class="card-title">Accounts</div>
+    <div>
+      {% if accounts %}
+        {{ accounts|join(", ") }}
+      {% else %}
+        No accounts loaded.
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Tickets</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Symbol</th>
+            <th>Expiry</th>
+            <th>Strategy</th>
+            <th>Status</th>
+            <th>Top Trade</th>
+            <th>Legs</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ticket in tickets %}
+            <tr>
+              <td>{{ ticket.id }}</td>
+              <td>{{ ticket.symbol }}</td>
+              <td>{{ ticket.expiry }}</td>
+              <td>{{ ticket.strategy }}</td>
+              <td>{{ ticket.status }}</td>
+              <td>
+                {% if ticket.trade %}
+                  {{ ticket.trade.get("Trade") or ticket.trade.get("Put Spread") or ticket.trade.get("Call Spread") }}
+                {% endif %}
+              </td>
+              <td>
+                {% for leg in ticket.legs %}
+                  {{ leg.action }} {{ leg.strike }} {{ leg.type }}<br>
+                {% endfor %}
+              </td>
+              <td>
+                <form method="post">
+                  <input type="hidden" name="ticket_id" value="{{ ticket.id }}">
+                  <button class="button" type="submit" name="action" value="confirm">Confirm</button>
+                  <button class="button" type="submit" name="action" value="send">Send</button>
+                  <button class="button" type="submit" name="action" value="clear">Clear</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="8">No tickets yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

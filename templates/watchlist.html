@@ -1,0 +1,124 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Watchlist</h1>
+      <p class="subtitle">Track symbols and run quick scans.</p>
+    </div>
+    <div class="pill">Nova Watch</div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <section class="card">
+    <div class="card-title">Add Symbol</div>
+    <form class="form-actions" method="post">
+      <input type="hidden" name="action" value="add">
+      <input type="text" name="symbol" placeholder="e.g., NVDA" required>
+      <button class="button" type="submit">Add</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Your Watchlist</div>
+    <div class="watchlist-chips">
+      {% for sym in watchlist %}
+        <div class="chip">
+          <span>{{ sym }}</span>
+          <form method="post">
+            <input type="hidden" name="action" value="remove">
+            <input type="hidden" name="symbol" value="{{ sym }}">
+            <button class="chip-remove" type="submit">x</button>
+          </form>
+          <a class="chip-link" href="{{ url_for('options_chain', symbol=sym) }}">Scan</a>
+        </div>
+      {% else %}
+        <div>No symbols yet.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <form class="card form" method="post">
+    <input type="hidden" name="action" value="scan">
+    <div class="card-title">Scan Watchlist</div>
+    <div class="form-grid">
+      <label>
+        Strategy
+        <select name="strategy">
+          <option value="bull_put">Bull Put</option>
+          <option value="bear_call">Bear Call</option>
+          <option value="iron_condor">Iron Condor</option>
+        </select>
+      </label>
+      <label>
+        Max Width
+        <input type="number" step="0.5" min="0.5" name="width" value="2.5">
+      </label>
+      <label>
+        Min POP (%)
+        <input type="number" step="1" min="0" max="99" name="min_pop" value="70">
+      </label>
+      <label>
+        Contracts
+        <input type="number" step="1" min="1" name="contracts" value="1">
+      </label>
+      <label>
+        Cash Balance
+        <input type="number" step="50" min="0" name="cash" value="2000">
+      </label>
+      <label>
+        Max Loss
+        <input type="number" step="50" min="0" name="max_loss" value="350">
+      </label>
+      <label>
+        Expiration (optional)
+        <input type="text" name="expiry" placeholder="YYYY-MM-DD">
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="raw" value="1">
+        Show raw results
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="button" type="submit">Scan All</button>
+    </div>
+  </form>
+
+  {% if results %}
+    <section class="card">
+      <div class="card-title">Scan Results</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Expiry</th>
+              <th>Spot</th>
+              <th>Trades Found</th>
+              <th>Top Trade</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in results %}
+              <tr>
+                <td>{{ row.symbol }}</td>
+                <td>{{ row.expiry }}</td>
+                <td>{{ row.spot }}</td>
+                <td>{{ row.count }}</td>
+                <td>
+                  {% if row.top %}
+                    {{ row.top.get("Trade") or row.top.get("Put Spread") or row.top.get("Call Spread") }}
+                  {% endif %}
+                </td>
+                <td>{{ row.error }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}

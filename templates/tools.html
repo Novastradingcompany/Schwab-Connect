@@ -1,0 +1,88 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Tools & Health</h1>
+      <p class="subtitle">Exports, monitor status, and error log.</p>
+    </div>
+    <div class="pill">Utilities</div>
+  </section>
+
+  <section class="card">
+    <details open>
+      <summary>Monitor Status</summary>
+      <div class="details-body">
+        <div>Last monitor run: {{ state.last_monitor_run or "n/a" }}</div>
+        <div>Last alert count: {{ state.last_alert_count or 0 }}</div>
+        <div>Last email sent: {{ state.last_email_sent or "n/a" }}</div>
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Timezone</summary>
+      <div class="details-body">
+        <form method="get" action="{{ url_for('summary') }}">
+          <label>
+            Set timezone
+            <select name="tz">
+              <option value="America/New_York">Eastern (ET)</option>
+              <option value="America/Chicago">Central (CT)</option>
+              <option value="America/Denver">Mountain (MT)</option>
+              <option value="America/Los_Angeles">Pacific (PT)</option>
+            </select>
+          </label>
+          <div class="form-actions">
+            <button class="button" type="submit">Save Timezone</button>
+          </div>
+        </form>
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Exports</summary>
+      <div class="details-body">
+        <a class="button" href="{{ url_for('export_alerts') }}">Export Alerts CSV</a>
+        <a class="button" href="{{ url_for('export_tickets') }}">Export Tickets CSV</a>
+        <a class="button" href="{{ url_for('export_summary') }}">Export Summary CSV</a>
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Schwab Status Check</summary>
+      <div class="details-body">
+        <a class="button" href="{{ url_for('tools', check_schwab=1) }}">Run Status Check</a>
+        {% if status %}
+          {% if status.ok %}
+            <div>OK (HTTP {{ status.status_code }})</div>
+          {% else %}
+            <div>Error: {{ status.error }}</div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Error Log</summary>
+      <div class="details-body">
+        <a class="button" href="{{ url_for('tools', clear_errors=1) }}">Clear Error Log</a>
+        {% if errors %}
+          <ul class="error-list">
+            {% for err in errors %}
+              <li>{{ err.timestamp }} — {{ err.context }} — {{ err.message }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div>No errors logged.</div>
+        {% endif %}
+      </div>
+    </details>
+  </section>
+{% endblock %}

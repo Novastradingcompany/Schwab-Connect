@@ -1,0 +1,72 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Positions</h1>
+      <p class="subtitle">Open positions across your Schwab accounts.</p>
+    </div>
+    <div class="pill">Live</div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <section class="card">
+    <div class="card-title">Positions</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Account</th>
+            <th>Symbol</th>
+            <th>Type</th>
+            <th>Qty</th>
+            <th>Avg Price</th>
+            <th>Market Value</th>
+            <th>P/L</th>
+            <th>P/L %</th>
+            <th>DTE</th>
+            <th>Last</th>
+            <th>Mark</th>
+            <th>Delta</th>
+            <th>Theta</th>
+            <th>IV</th>
+            <th>Action</th>
+            <th>Why</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td>{{ row.accountNumber }}</td>
+              <td>{{ row.symbol }}</td>
+              <td>{{ row.assetType }}</td>
+              <td>{{ row.qty }}</td>
+              <td>{{ row.avgPrice }}</td>
+              <td>{{ row.marketValue }}</td>
+              <td>{{ row.pnl }}</td>
+              <td>
+                {% if row.pnl_pct is not none %}
+                  {{ "%.2f"|format(row.pnl_pct) }}%
+                {% endif %}
+              </td>
+              <td>{{ row.dte }}</td>
+              <td>{{ row.quote.last }}</td>
+              <td>{{ row.quote.mark }}</td>
+              <td>{{ row.quote.delta }}</td>
+              <td>{{ row.quote.theta }}</td>
+              <td>{{ row.quote.iv }}</td>
+              <td>{{ row.action }}</td>
+              <td>{{ row.reasons }}</td>
+              <td>{{ row.note }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="17">No positions found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

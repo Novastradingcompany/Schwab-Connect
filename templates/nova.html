@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Nova Chat</h1>
+      <p class="subtitle">Advisory-only guidance. No order placement.</p>
+    </div>
+    <div class="pill">Model: {{ settings.nova_model }}</div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <section class="card chat-window">
+    {% for msg in messages %}
+      <div class="chat-row {{ msg.role }}">
+        <div class="chat-bubble">
+          <strong>{{ "You" if msg.role == "user" else "Nova" }}:</strong>
+          {{ msg.content }}
+        </div>
+      </div>
+    {% else %}
+      <div>No messages yet.</div>
+    {% endfor %}
+  </section>
+
+  <form class="card form" method="post">
+    <label>
+      Message
+      <textarea name="message" rows="3" placeholder="Type your message to Nova"></textarea>
+    </label>
+    <div class="form-actions">
+      <button class="button" type="submit">Send</button>
+    </div>
+  </form>
+{% endblock %}

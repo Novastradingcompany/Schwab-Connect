@@ -1,0 +1,230 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Options Chain Scanner</h1>
+      <p class="subtitle">Scan verticals and condors from Schwab option chains.</p>
+    </div>
+    {% if spot_price %}
+      <div class="pill">Spot: ${{ "%.2f"|format(spot_price) }}</div>
+    {% endif %}
+  </section>
+
+  <form class="card form" method="get">
+    <div class="form-grid">
+      <label>
+        Symbol
+        <input type="text" name="symbol" value="{{ symbol }}" required>
+      </label>
+      <label>
+        Expiration
+        <select name="expiry">
+          <option value="">Select expiry</option>
+          {% for exp in expirations %}
+            <option value="{{ exp.date }}" {% if exp.date == expiry %}selected{% endif %}>
+              {{ exp.date }}{% if exp.dte %} ({{ exp.dte }} DTE){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Strategy
+        <select name="strategy">
+          <option value="bull_put" {% if strategy == "bull_put" %}selected{% endif %}>Bull Put</option>
+          <option value="bear_call" {% if strategy == "bear_call" %}selected{% endif %}>Bear Call</option>
+          <option value="iron_condor" {% if strategy == "iron_condor" %}selected{% endif %}>Iron Condor</option>
+        </select>
+      </label>
+      <label>
+        Max Width
+        <input type="number" step="0.5" min="0.5" name="width" value="{{ width }}">
+      </label>
+      <label>
+        Min POP (%)
+        <input type="number" step="1" min="0" max="99" name="min_pop" value="{{ min_pop }}">
+      </label>
+      <label>
+        Contracts
+        <input type="number" step="1" min="1" name="contracts" value="{{ contracts }}">
+      </label>
+      <label>
+        Cash Balance
+        <input type="number" step="50" min="0" name="cash" value="{{ cash_balance }}">
+      </label>
+      <label>
+        Max Loss
+        <input type="number" step="50" min="0" name="max_loss" value="{{ max_loss }}">
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="raw" value="1" {% if raw_mode %}checked{% endif %}>
+        Show raw results (ignore filters)
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="auto" value="60" {% if auto_refresh %}checked{% endif %}>
+        Auto-refresh (60s)
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="button" type="submit">Scan</button>
+    </div>
+  </form>
+
+  {% if errors %}
+    <div class="card alert">
+      {% for err in errors %}
+        <div>{{ err }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if nova_error %}
+    <div class="card alert">
+      <div>{{ nova_error }}</div>
+    </div>
+  {% endif %}
+
+  {% if research %}
+    <section class="card">
+      <div class="card-title">Research Snapshot</div>
+      {% if research.error %}
+        <div>{{ research.error }}</div>
+      {% else %}
+        <div><strong>{{ research.symbol }}</strong></div>
+        <div>Last: {{ research.metrics.last }}</div>
+        <div>5D: {{ "%.2f"|format(research.metrics.ret_5d) if research.metrics.ret_5d is not none else "n/a" }}%</div>
+        <div>20D: {{ "%.2f"|format(research.metrics.ret_20d) if research.metrics.ret_20d is not none else "n/a" }}%</div>
+        <div>60D: {{ "%.2f"|format(research.metrics.ret_60d) if research.metrics.ret_60d is not none else "n/a" }}%</div>
+        <div>SMA20/50/200: {{ research.metrics.sma20 }} / {{ research.metrics.sma50 }} / {{ research.metrics.sma200 }}</div>
+        <div>Trend 20/50: {{ research.metrics.trend_20_50 }}</div>
+        <div>Trend 50/200: {{ research.metrics.trend_50_200 }}</div>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {% if market_research %}
+    <section class="card">
+      <div class="card-title">Market Regime</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Last</th>
+              <th>5D</th>
+              <th>20D</th>
+              <th>60D</th>
+              <th>Trend 20/50</th>
+              <th>Trend 50/200</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in market_research %}
+              <tr>
+                <td>{{ row.symbol }}</td>
+                <td>{{ row.metrics.last if row.metrics }}</td>
+                <td>
+                  {% if row.metrics and row.metrics.ret_5d is not none %}
+                    {{ "%.2f"|format(row.metrics.ret_5d) }}%
+                  {% endif %}
+                </td>
+                <td>
+                  {% if row.metrics and row.metrics.ret_20d is not none %}
+                    {{ "%.2f"|format(row.metrics.ret_20d) }}%
+                  {% endif %}
+                </td>
+                <td>
+                  {% if row.metrics and row.metrics.ret_60d is not none %}
+                    {{ "%.2f"|format(row.metrics.ret_60d) }}%
+                  {% endif %}
+                </td>
+                <td>{{ row.metrics.trend_20_50 if row.metrics }}</td>
+                <td>{{ row.metrics.trend_50_200 if row.metrics }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if nova_response %}
+    <section class="card">
+      <div class="card-title">Nova Response</div>
+      <form class="form-actions" method="post" action="{{ url_for('nova_options_clear') }}">
+        <input type="hidden" name="symbol" value="{{ symbol }}">
+        <input type="hidden" name="expiry" value="{{ expiry }}">
+        <input type="hidden" name="strategy" value="{{ strategy }}">
+        <input type="hidden" name="width" value="{{ width }}">
+        <input type="hidden" name="min_pop" value="{{ min_pop }}">
+        <input type="hidden" name="contracts" value="{{ contracts }}">
+        <input type="hidden" name="cash" value="{{ cash_balance }}">
+        <input type="hidden" name="max_loss" value="{{ max_loss }}">
+        {% if raw_mode %}<input type="hidden" name="raw" value="1">{% endif %}
+        <button class="button" type="submit">Clear Nova Response</button>
+      </form>
+      <div class="nova-response">{{ nova_response }}</div>
+    </section>
+  {% endif %}
+
+  {% if results_rows %}
+    <form class="card" method="post" action="{{ url_for('nova_options') }}">
+      <input type="hidden" name="symbol" value="{{ symbol }}">
+      <input type="hidden" name="expiry" value="{{ expiry }}">
+      <input type="hidden" name="strategy" value="{{ strategy }}">
+      <input type="hidden" name="width" value="{{ width }}">
+      <input type="hidden" name="min_pop" value="{{ min_pop }}">
+      <input type="hidden" name="contracts" value="{{ contracts }}">
+      <input type="hidden" name="cash" value="{{ cash_balance }}">
+      <input type="hidden" name="max_loss" value="{{ max_loss }}">
+      {% if raw_mode %}<input type="hidden" name="raw" value="1">{% endif %}
+
+      <div class="card-title">Nova Actions</div>
+      <div class="form-actions">
+        <button class="button" type="submit" name="action" value="analyze_chain">Ask Nova about this chain</button>
+        <button class="button" type="submit" name="action" value="suggest_filters">Suggest filters</button>
+        <button class="button" type="submit" name="action" value="explain_trade">Explain selected trade</button>
+        <button class="button" type="submit" formaction="{{ url_for('create_ticket') }}">Create trade ticket</button>
+      </div>
+
+      <div class="table-wrap" data-refresh="{{ auto_refresh }}">
+        <table>
+          <thead>
+            <tr>
+              <th>Select</th>
+              {% for col in results_columns %}
+                <th>{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in results_rows %}
+              <tr>
+                <td><input type="radio" name="trade_index" value="{{ loop.index0 }}"></td>
+                {% for col in results_columns %}
+                  <td>{{ row[col] }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </form>
+  {% elif expiry %}
+    <section class="card">
+      <div>No trades matched your filters.</div>
+      <form class="form-actions" method="post" action="{{ url_for('nova_options') }}">
+        <input type="hidden" name="symbol" value="{{ symbol }}">
+        <input type="hidden" name="expiry" value="{{ expiry }}">
+        <input type="hidden" name="strategy" value="{{ strategy }}">
+        <input type="hidden" name="width" value="{{ width }}">
+        <input type="hidden" name="min_pop" value="{{ min_pop }}">
+        <input type="hidden" name="contracts" value="{{ contracts }}">
+        <input type="hidden" name="cash" value="{{ cash_balance }}">
+        <input type="hidden" name="max_loss" value="{{ max_loss }}">
+        {% if raw_mode %}<input type="hidden" name="raw" value="1">{% endif %}
+        <button class="button" type="submit" name="action" value="suggest_filters">Suggest filters</button>
+        <button class="button" type="submit" name="action" value="analyze_chain">Ask Nova about this chain</button>
+      </form>
+    </section>
+  {% endif %}
+{% endblock %}

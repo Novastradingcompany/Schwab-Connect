@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Login</h1>
+      <p class="subtitle">Access requires a valid username and password.</p>
+    </div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <form class="card form" method="post">
+    <div class="form-grid">
+      <label>
+        Username
+        <input type="text" name="username" autocomplete="username" required>
+      </label>
+      <label>
+        Password
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="button" type="submit">Sign In</button>
+    </div>
+  </form>
+{% endblock %}

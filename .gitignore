@@ -1,0 +1,8 @@
+.env
+token.json
+alerts.json
+alerts_state.json
+monitor_state.json
+error_log.json
+tickets.json
+watchlist.json

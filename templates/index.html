@@ -1,0 +1,39 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Account Overview</h1>
+      <p class="subtitle">Live balances pulled from Schwab.</p>
+    </div>
+    <div class="pill">Status: Connected</div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <section class="cards">
+    {% for acct in summary %}
+      <div class="card">
+        <div class="card-title">Account {{ acct.accountNumber }}</div>
+        <div class="card-meta">{{ acct.type }}</div>
+        <div class="metrics">
+          <div>
+            <div class="metric-label">Liquidation</div>
+            <div class="metric-value">${{ "%.2f"|format(acct.liquidationValue or 0) }}</div>
+          </div>
+          <div>
+            <div class="metric-label">Cash</div>
+            <div class="metric-value">${{ "%.2f"|format(acct.cashBalance or 0) }}</div>
+          </div>
+          <div>
+            <div class="metric-label">Equity</div>
+            <div class="metric-value">${{ "%.2f"|format(acct.equity or 0) }}</div>
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div class="card">No accounts found.</div>
+    {% endfor %}
+  </section>
+{% endblock %}

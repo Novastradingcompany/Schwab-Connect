@@ -1,0 +1,158 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Alerts</h1>
+      <p class="subtitle">Positions that meet your exit rules.</p>
+    </div>
+    <div class="pill">Rules Active</div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <form class="card form" method="post">
+    <div class="form-grid">
+      <label>
+        Profit Target (% of credit)
+        <input type="number" step="1" min="1" name="profit_target_pct" value="{{ settings.profit_target_pct }}">
+      </label>
+      <label>
+        Max Loss (% of max loss)
+        <input type="number" step="1" min="1" name="max_loss_pct" value="{{ settings.max_loss_pct }}">
+      </label>
+      <label>
+        Time-based Exit (DTE)
+        <input type="number" step="1" min="0" name="dte_exit" value="{{ settings.dte_exit }}">
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="nova_judgment" {% if settings.nova_judgment %}checked{% endif %}>
+        Nova judgment notes
+      </label>
+      <label>
+        Polling interval (minutes)
+        <select name="polling_minutes">
+          {% for val in [5, 15, 30, 60] %}
+            <option value="{{ val }}" {% if settings.polling_minutes == val %}selected{% endif %}>{{ val }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="monitor_market_hours_only" {% if settings.monitor_market_hours_only %}checked{% endif %}>
+        Monitor only during market hours
+      </label>
+      <label>
+        Market open (HH:MM)
+        <input type="text" name="market_open_time" value="{{ settings.market_open_time }}" placeholder="09:30">
+      </label>
+      <label>
+        Market close (HH:MM)
+        <input type="text" name="market_close_time" value="{{ settings.market_close_time }}" placeholder="16:00">
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="monitor_weekdays_only" {% if settings.monitor_weekdays_only %}checked{% endif %}>
+        Monitor weekdays only
+      </label>
+      <label>
+        Market holidays (YYYY-MM-DD, comma-separated)
+        <input type="text" name="market_holidays" value="{{ settings.market_holidays }}" placeholder="2024-12-25, 2025-01-01">
+      </label>
+      <label>
+        Nova model
+        <select name="nova_model">
+          {% for model in nova_models %}
+            <option value="{{ model }}" {% if settings.nova_model == model %}selected{% endif %}>{{ model }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Nova role
+        <select id="nova-role-preset">
+          <option value="">Choose a preset...</option>
+          <option value="senior partner with 20 years of options experience and decision-making authority" {% if settings.nova_role == "senior partner with 20 years of options experience and decision-making authority" %}selected{% endif %}>Senior Partner</option>
+          <option value="risk manager focused on protecting capital and avoiding drawdowns" {% if settings.nova_role == "risk manager focused on protecting capital and avoiding drawdowns" %}selected{% endif %}>Risk Manager</option>
+          <option value="conservative advisor prioritizing high probability and smaller, steady gains" {% if settings.nova_role == "conservative advisor prioritizing high probability and smaller, steady gains" %}selected{% endif %}>Conservative Advisor</option>
+          <option value="aggressive trader seeking higher return setups within the user's rules" {% if settings.nova_role == "aggressive trader seeking higher return setups within the user's rules" %}selected{% endif %}>Aggressive Trader</option>
+        </select>
+        <textarea name="nova_role" rows="2" placeholder="Describe Nova's role">{{ settings.nova_role }}</textarea>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="button" type="submit">Save Rules</button>
+    </div>
+  </form>
+
+  {% if not email_ready %}
+    <div class="card alert">
+      Email alerts are not configured. Add SMTP creds in `.env` to enable emails.
+    </div>
+  {% endif %}
+  <script>
+    const preset = document.getElementById("nova-role-preset");
+    const roleBox = document.querySelector("textarea[name='nova_role']");
+    if (preset && roleBox) {
+      preset.addEventListener("change", () => {
+        if (preset.value) {
+          roleBox.value = preset.value;
+        }
+      });
+    }
+  </script>
+
+  <section class="card">
+    <div class="card-title">Action Required</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Account</th>
+            <th>Symbol</th>
+            <th>Type</th>
+            <th>Qty</th>
+            <th>Market Value</th>
+            <th>P/L</th>
+            <th>P/L %</th>
+            <th>DTE</th>
+            <th>Last</th>
+            <th>Mark</th>
+            <th>Delta</th>
+            <th>Theta</th>
+            <th>IV</th>
+            <th>Action</th>
+            <th>Why</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td>{{ row.accountNumber }}</td>
+              <td>{{ row.symbol }}</td>
+              <td>{{ row.assetType }}</td>
+              <td>{{ row.qty }}</td>
+              <td>{{ row.marketValue }}</td>
+              <td>{{ row.pnl }}</td>
+              <td>
+                {% if row.pnl_pct is not none %}
+                  {{ "%.2f"|format(row.pnl_pct) }}%
+                {% endif %}
+              </td>
+              <td>{{ row.dte }}</td>
+              <td>{{ row.quote.last }}</td>
+              <td>{{ row.quote.mark }}</td>
+              <td>{{ row.quote.delta }}</td>
+              <td>{{ row.quote.theta }}</td>
+              <td>{{ row.quote.iv }}</td>
+              <td>{{ row.action }}</td>
+              <td>{{ row.reasons }}</td>
+              <td>{{ row.note }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="16">No alerts right now.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

@@ -1,0 +1,117 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Risk Dashboard</h1>
+      <p class="subtitle">Portfolio exposure, P/L, and DTE concentration.</p>
+    </div>
+    <div class="pill">Snapshot</div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <section class="cards">
+    <div class="card">
+      <div class="card-title">Total Market Value</div>
+      <div class="metric-value">${{ "%.2f"|format(summary.total_mv or 0) }}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Total P/L</div>
+      <div class="metric-value">${{ "%.2f"|format(summary.total_pnl or 0) }}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Options DTE &lt;= 7</div>
+      <div class="metric-value">{{ summary.dte_buckets["<=7"] if summary.dte_buckets else 0 }}</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Exposure by Asset Type</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Count</th>
+            <th>Market Value</th>
+            <th>P/L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for key, row in summary.by_type.items() %}
+            <tr>
+              <td>{{ key }}</td>
+              <td>{{ row.count }}</td>
+              <td>{{ row.marketValue }}</td>
+              <td>{{ row.pnl }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4">No data.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Top Symbols by Exposure</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Count</th>
+            <th>Market Value</th>
+            <th>P/L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in summary.by_symbol %}
+            <tr>
+              <td>{{ row.symbol }}</td>
+              <td>{{ row.count }}</td>
+              <td>{{ row.marketValue }}</td>
+              <td>{{ row.pnl }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4">No data.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Largest Positions</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Type</th>
+            <th>Qty</th>
+            <th>Market Value</th>
+            <th>P/L</th>
+            <th>DTE</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in summary.top_positions %}
+            <tr>
+              <td>{{ row.symbol }}</td>
+              <td>{{ row.assetType }}</td>
+              <td>{{ row.qty }}</td>
+              <td>{{ row.marketValue }}</td>
+              <td>{{ row.pnl }}</td>
+              <td>{{ row.dte }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6">No data.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

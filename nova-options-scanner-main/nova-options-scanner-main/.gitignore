@@ -1,0 +1,7 @@
+# Ignore environment and venv
+.env
+.venv/
+__pycache__/
+*.pyc
+.streamlit/secrets.toml
+backup/

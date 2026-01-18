@@ -1,0 +1,15 @@
+{
+  "profit_target_pct": 50.0,
+  "max_loss_pct": 50.0,
+  "dte_exit": 7,
+  "nova_judgment": true,
+  "nova_model": "gpt-4.1",
+  "nova_role": "aggressive trader seeking higher return setups within the user's rules",
+  "polling_minutes": 60,
+  "timezone": "America/Chicago",
+  "monitor_market_hours_only": true,
+  "market_open_time": "09:30",
+  "market_close_time": "16:00",
+  "monitor_weekdays_only": true,
+  "market_holidays": "2026-12-25"
+}

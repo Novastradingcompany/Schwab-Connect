@@ -1,0 +1,79 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Yearly Summary</h1>
+      <p class="subtitle">Open + closed P/L grouped by symbol and period.</p>
+    </div>
+    <div class="pill">Last 12 months</div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <form class="card form" method="get">
+    <div class="form-grid">
+      <label>
+        Period
+        <select name="period">
+          <option value="week" {% if period == "week" %}selected{% endif %}>Week</option>
+          <option value="month" {% if period == "month" %}selected{% endif %}>Month</option>
+          <option value="quarter" {% if period == "quarter" %}selected{% endif %}>Quarter</option>
+          <option value="year" {% if period == "year" %}selected{% endif %}>Year</option>
+        </select>
+      </label>
+      <label>
+        Status
+        <select name="status">
+          <option value="all" {% if status == "all" %}selected{% endif %}>All</option>
+          <option value="open" {% if status == "open" %}selected{% endif %}>Open</option>
+          <option value="closed" {% if status == "closed" %}selected{% endif %}>Closed</option>
+        </select>
+      </label>
+      <label>
+        Sort
+        <select name="sort">
+          <option value="profit" {% if sort_by == "profit" %}selected{% endif %}>Profit (desc)</option>
+          <option value="loss" {% if sort_by == "loss" %}selected{% endif %}>Loss (asc)</option>
+          <option value="symbol" {% if sort_by == "symbol" %}selected{% endif %}>Symbol</option>
+        </select>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="button" type="submit">Update</button>
+    </div>
+  </form>
+
+  <section class="card">
+    <div class="card-title">Summary</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Period</th>
+            <th>Symbol</th>
+            <th>Status</th>
+            <th>Asset Type</th>
+            <th>Qty</th>
+            <th>P/L (Net)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td>{{ row.period }}</td>
+              <td>{{ row.symbol }}</td>
+              <td>{{ row.status }}</td>
+              <td>{{ row.assetType }}</td>
+              <td>{{ "%.2f"|format(row.qty) }}</td>
+              <td>{{ "%.2f"|format(row.pnl) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6">No data.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

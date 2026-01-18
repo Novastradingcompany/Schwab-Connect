@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Error {{ code }}</h1>
+      <p class="subtitle">{{ message }}</p>
+    </div>
+    <div class="pill">Oops</div>
+  </section>
+
+  <section class="card">
+    <div>Try going back or using the navigation menu.</div>
+  </section>
+{% endblock %}
