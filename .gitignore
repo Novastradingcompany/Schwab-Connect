@@ -1,5 +1,9 @@
 .env
 token.json
+__pycache__/
+*.pyc
+accounts.json
+settings.json
 alerts.json
 alerts_state.json
 monitor_state.json
