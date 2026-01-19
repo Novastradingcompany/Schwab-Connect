@@ -64,16 +64,25 @@ def scan_bear_call(chain: pd.DataFrame,
         max_loss_val = calc_max_loss(width, credit_per_contract, contracts)
         breakeven = calc_breakeven(float(sell_leg["strike"]), credit_per_contract, "call", contracts)
 
-        iv = float(sell_leg.get("impliedVolatility", 0))
-        iv = iv / 100 if iv > 1 else iv
-        delta = sell_leg.get("delta")
-        if delta is None and iv > 0 and T > 0:
-            delta = bs_delta(
+        iv_raw = sell_leg.get("impliedVolatility_raw", sell_leg.get("impliedVolatility", 0))
+        try:
+            iv_calc = float(iv_raw)
+        except (TypeError, ValueError):
+            iv_calc = 0.0
+        if iv_calc > 1:
+            iv_calc = iv_calc / 100
+
+        delta_raw = sell_leg.get("delta_raw", sell_leg.get("delta"))
+        delta_calc = delta_raw
+        if isinstance(delta_calc, (int, float)) and abs(delta_calc) > 1:
+            delta_calc = None
+        if delta_calc is None and iv_calc > 0 and T > 0:
+            delta_calc = bs_delta(
                 S=float(spot_price),
                 K=float(sell_leg["strike"]),
                 T=T,
                 r=0.02,
-                sigma=iv,
+                sigma=iv_calc,
                 option_type="call",
             )
 
@@ -84,9 +93,9 @@ def scan_bear_call(chain: pd.DataFrame,
             credit=credit_per_contract,
             max_loss=max_loss_val,
             opt_type="call",
-            delta=delta,
+            delta=delta_calc,
             contracts=contracts,
-            iv=iv,
+            iv=iv_calc,
             T=T,
             r=0.02,
         )
@@ -106,8 +115,8 @@ def scan_bear_call(chain: pd.DataFrame,
             "POP %": round(float(pop), 1),
             "Breakeven": round(float(breakeven), 2),
             "Distance %": round(abs(float(sell_leg['strike']) - float(spot_price)) / float(spot_price) * 100, 2),
-            "Delta": delta,
-            "Implied Vol": round(iv, 3),
+            "Delta": delta_raw if delta_raw is not None else delta_calc,
+            "Implied Vol": round(iv_raw, 3) if isinstance(iv_raw, (int, float)) else iv_raw,
             "Contracts": int(contracts),
             "Spot": round(float(spot_price), 2),
         })

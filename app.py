@@ -770,27 +770,25 @@ def flatten_option_map(exp_map):
         rows = []
         for strike, options in strikes.items():
             for opt in options:
-                delta = opt.get("delta")
+                delta_raw = opt.get("delta")
                 try:
-                    delta = float(delta)
+                    delta_raw = float(delta_raw)
                 except (TypeError, ValueError):
-                    delta = None
-                if delta is not None and (abs(delta) > 1 or delta == -999):
-                    delta = None
-                iv = opt.get("volatility", opt.get("impliedVolatility", 0))
+                    delta_raw = None
+                iv_raw = opt.get("volatility", opt.get("impliedVolatility", 0))
                 try:
-                    iv = float(iv)
+                    iv_raw = float(iv_raw)
                 except (TypeError, ValueError):
-                    iv = 0.0
-                if iv < 0 or iv == -999:
-                    iv = 0.0
+                    iv_raw = None
                 rows.append({
                     "strike": float(opt.get("strikePrice", strike)),
                     "bid": float(opt.get("bid", 0) or 0),
                     "ask": float(opt.get("ask", 0) or 0),
                     "openInterest": int(opt.get("openInterest", 0) or 0),
-                    "impliedVolatility": iv,
-                    "delta": delta,
+                    "impliedVolatility": iv_raw,
+                    "impliedVolatility_raw": iv_raw,
+                    "delta": delta_raw,
+                    "delta_raw": delta_raw,
                 })
         flattened[exp_date] = {"dte": dte, "rows": rows}
     return flattened
