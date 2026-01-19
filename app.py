@@ -389,8 +389,9 @@ def save_tickets(data):
 def get_client():
     global _CLIENT
     if _CLIENT is None:
+        token_path = os.getenv("TOKEN_PATH", "token.json")
         _CLIENT = client_from_token_file(
-            "token.json",
+            token_path,
             _get_env("SCHWAB_API_KEY"),
             _get_env("SCHWAB_APP_SECRET"),
             enforce_enums=False,
