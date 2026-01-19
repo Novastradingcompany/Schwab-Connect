@@ -70,7 +70,7 @@ def calc_pop(short_strike, spot, width, credit, max_loss,
         except Exception:
             pass
 
-    if delta is not None and isinstance(delta, (int, float)):
+    if delta is not None and isinstance(delta, (int, float)) and abs(delta) <= 1:
         prob_itm = abs(delta)
         prob_otm = 1 - prob_itm
         return round(prob_otm * 100, 1)

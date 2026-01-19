@@ -297,7 +297,18 @@ def fetch_price_history(symbol, days=365):
 
 def _extract_closes(history):
     candles = history.get("candles", []) if isinstance(history, dict) else []
-    closes = [c.get("close") for c in candles if c.get("close") is not None]
+    closes = []
+    for candle in candles:
+        close = candle.get("close")
+        if close is None:
+            continue
+        try:
+            close_val = float(close)
+        except (TypeError, ValueError):
+            continue
+        if close_val <= 0:
+            continue
+        closes.append(close_val)
     return closes
 
 
@@ -759,13 +770,27 @@ def flatten_option_map(exp_map):
         rows = []
         for strike, options in strikes.items():
             for opt in options:
+                delta = opt.get("delta")
+                try:
+                    delta = float(delta)
+                except (TypeError, ValueError):
+                    delta = None
+                if delta is not None and (abs(delta) > 1 or delta == -999):
+                    delta = None
+                iv = opt.get("volatility", opt.get("impliedVolatility", 0))
+                try:
+                    iv = float(iv)
+                except (TypeError, ValueError):
+                    iv = 0.0
+                if iv < 0 or iv == -999:
+                    iv = 0.0
                 rows.append({
                     "strike": float(opt.get("strikePrice", strike)),
                     "bid": float(opt.get("bid", 0) or 0),
                     "ask": float(opt.get("ask", 0) or 0),
                     "openInterest": int(opt.get("openInterest", 0) or 0),
-                    "impliedVolatility": float(opt.get("volatility", opt.get("impliedVolatility", 0)) or 0),
-                    "delta": opt.get("delta"),
+                    "impliedVolatility": iv,
+                    "delta": delta,
                 })
         flattened[exp_date] = {"dte": dte, "rows": rows}
     return flattened
