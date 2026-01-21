@@ -1315,7 +1315,7 @@ def watchlist():
         if action == "scan":
             strategy = request.form.get("strategy", "bull_put")
             width = float(request.form.get("width", 2.5))
-            min_pop = float(request.form.get("min_pop", 70))
+            min_pop = float(request.form.get("min_pop", 80))
             contracts = int(request.form.get("contracts", 1))
             raw_mode = request.form.get("raw", "") == "1"
             cash_balance = int(request.form.get("cash", 2000))
@@ -1407,7 +1407,7 @@ def create_ticket():
     symbol = request.form.get("symbol", "NVDA").upper().strip()
     strategy = request.form.get("strategy", "bull_put")
     width = float(request.form.get("width", 2.5))
-    min_pop = float(request.form.get("min_pop", 70))
+    min_pop = float(request.form.get("min_pop", 80))
     contracts = int(request.form.get("contracts", 1))
     raw_mode = request.form.get("raw", "") == "1"
     cash_balance = int(request.form.get("cash", 2000))
@@ -1661,7 +1661,7 @@ def nova_options():
     symbol = request.form.get("symbol", "NVDA").upper().strip()
     strategy = request.form.get("strategy", "bull_put")
     width = float(request.form.get("width", 2.5))
-    min_pop = float(request.form.get("min_pop", 70))
+    min_pop = float(request.form.get("min_pop", 80))
     contracts = int(request.form.get("contracts", 1))
     raw_mode = request.form.get("raw", "") == "1"
     cash_balance = int(request.form.get("cash", 2000))
@@ -1786,7 +1786,7 @@ def nova_options_clear():
     symbol = request.form.get("symbol", "NVDA").upper().strip()
     strategy = request.form.get("strategy", "bull_put")
     width = float(request.form.get("width", 2.5))
-    min_pop = float(request.form.get("min_pop", 70))
+    min_pop = float(request.form.get("min_pop", 80))
     contracts = int(request.form.get("contracts", 1))
     raw_mode = request.form.get("raw", "") == "1"
     cash_balance = int(request.form.get("cash", 2000))
@@ -1810,7 +1810,7 @@ def options_chain():
     symbol = request.args.get("symbol", "NVDA").upper().strip()
     strategy = request.args.get("strategy", "bull_put")
     width = float(request.args.get("width", 2.5))
-    min_pop = float(request.args.get("min_pop", 70))
+    min_pop = float(request.args.get("min_pop", 80))
     contracts = int(request.args.get("contracts", 1))
     raw_mode = request.args.get("raw", "") == "1"
     cash_balance = int(request.args.get("cash", 2000))
