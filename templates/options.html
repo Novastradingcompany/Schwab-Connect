@@ -192,7 +192,11 @@
             <tr>
               <th>Select</th>
               {% for col in results_columns %}
-                <th>{{ col }}</th>
+                {% if col in ["Credit (Realistic)", "Total Credit ($)", "Max Loss ($)", "POP %"] %}
+                  <th class="sortable" data-sort="number">{{ col }}</th>
+                {% else %}
+                  <th>{{ col }}</th>
+                {% endif %}
               {% endfor %}
             </tr>
           </thead>

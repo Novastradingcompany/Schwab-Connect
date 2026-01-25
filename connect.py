@@ -1,8 +1,8 @@
-from schwab.auth import client_from_manual_flow, client_from_token_file
 import json
 import logging
 import os
 from dotenv import load_dotenv
+from schwab.auth import easy_client
 
 def _summarize_accounts(payload):
     summaries = []
@@ -24,20 +24,28 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     load_dotenv()
 
-    try:
-        api_key = os.getenv("SCHWAB_API_KEY")
-        app_secret = os.getenv("SCHWAB_APP_SECRET")
-        callback_url = os.getenv("SCHWAB_CALLBACK_URL")
-        token_path = "token.json"
+    api_key = os.getenv("SCHWAB_API_KEY")
+    app_secret = os.getenv("SCHWAB_APP_SECRET")
+    callback_url = os.getenv("SCHWAB_CALLBACK_URL")  # should be https://schwab-connect.onrender.com
 
-        if os.path.exists(token_path):
-            client = client_from_token_file(token_path, api_key, app_secret, enforce_enums=False)
-        else:
-            client = client_from_manual_flow(api_key, app_secret, callback_url, token_path)
+    token_path = "token.json"
+
+    try:
+        # easy_client handles:
+        # - local HTTPS callback server
+        # - OAuth login
+        # - token refresh
+        # - token storage
+        client = easy_client(
+            api_key=api_key,
+            app_secret=app_secret,
+            callback_url=callback_url,
+            token_path=token_path,
+            enforce_enums=False
+        )
 
         response = client.get_accounts()
-        if hasattr(response, "raise_for_status"):
-            response.raise_for_status()
+        response.raise_for_status()
 
         data = response.json()
         with open("accounts.json", "w", encoding="utf-8") as f:
@@ -48,9 +56,11 @@ def main():
         logging.info("Account summary:\n%s", json.dumps(summary, indent=2))
 
         print(json.dumps(data, indent=2))
+
     except Exception:
         logging.exception("Failed to fetch accounts")
         raise
 
 if __name__ == "__main__":
     main()
+

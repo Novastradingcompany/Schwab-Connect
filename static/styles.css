@@ -351,6 +351,28 @@ th {
   top: 0;
 }
 
+th.sortable {
+  cursor: pointer;
+  position: sticky;
+}
+
+th.sortable::after {
+  content: "↕";
+  font-size: 12px;
+  margin-left: 6px;
+  color: rgba(14, 19, 26, 0.45);
+}
+
+th.sortable[data-sort-dir="asc"]::after {
+  content: "▲";
+  color: var(--accent-dark);
+}
+
+th.sortable[data-sort-dir="desc"]::after {
+  content: "▼";
+  color: var(--accent-dark);
+}
+
 @media (max-width: 720px) {
   .topbar {
     flex-direction: column;

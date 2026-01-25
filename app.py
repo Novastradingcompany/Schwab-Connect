@@ -142,14 +142,17 @@ def login_required(view):
         return view(*args, **kwargs)
     return wrapped
 
-
 @app.before_request
 def require_login():
-    if request.endpoint in {"login", "logout", "static"}:
+    # These are endpoint names, NOT URL paths
+    if request.endpoint in {"login", "logout", "static", "callback"}:
         return None
+
     if not session.get("authed"):
         return redirect(url_for("login", next=request.path))
+
     return None
+
 
 
 def load_alerts():
@@ -1876,9 +1879,10 @@ def options_chain():
 
 
 if __name__ == "__main__":
-    if _MONITOR_THREAD is None:
-        should_start = os.environ.get("WERKZEUG_RUN_MAIN") == "true" or os.environ.get("FLASK_DEBUG") != "1"
-        if should_start:
-            _MONITOR_THREAD = threading.Thread(target=monitor_loop, daemon=True)
-            _MONITOR_THREAD.start()
-    app.run(host="127.0.0.1", port=8001, debug=True)
+    app.run(
+        host="127.0.0.1",
+        port=8001,
+        ssl_context=("cert.pem", "key.pem"),
+        debug=True
+    )
+
