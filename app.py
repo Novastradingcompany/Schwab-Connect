@@ -1194,6 +1194,28 @@ def format_results(df):
     rows = view.to_dict(orient="records")
     return columns, rows
 
+@app.route("/callback")
+def callback():
+    from schwab.auth import easy_client
+
+    api_key = _get_env("SCHWAB_API_KEY")
+    app_secret = _get_env("SCHWAB_APP_SECRET")
+    callback_url = _get_env("SCHWAB_CALLBACK_URL")
+    token_path = "token.json"
+
+    try:
+        client = easy_client(
+            api_key=api_key,
+            app_secret=app_secret,
+            callback_url=callback_url,
+            token_path=token_path,
+            enforce_enums=False,
+        )
+        session["authed"] = True
+        return redirect(url_for("index"))
+    except Exception as exc:
+        log_error(exc, context="callback")
+        return f"Callback error: {exc}", 500
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -1893,7 +1915,7 @@ def options_chain():
         research=research,
         market_research=market_research,
     )
-app = Flask(__name__)
+
 
 #if __name__ == "__main__":
   #  app.run(
