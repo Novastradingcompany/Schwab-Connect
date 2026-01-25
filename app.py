@@ -405,6 +405,12 @@ def get_client():
     global _CLIENT
     if _CLIENT is None:
         token_path = ensure_token_file()
+
+        # No token yet — user must log in first
+        if not token_path or not os.path.exists(token_path):
+            print("No token file found — user must log in first.")
+            return None
+
         _CLIENT = client_from_token_file(
             token_path,
             _get_env("SCHWAB_API_KEY"),
@@ -414,24 +420,35 @@ def get_client():
     return _CLIENT
 
 
+
 def ensure_token_file():
     token_path = os.getenv("TOKEN_PATH", "token.json")
+
+    # If the token file already exists, use it
     if os.path.exists(token_path):
         return token_path
+
+    # If a token is stored in environment variables, rebuild it
     token_json = os.getenv("TOKEN_JSON")
     token_b64 = os.getenv("TOKEN_JSON_B64")
+
     if token_b64 and not token_json:
         try:
             token_json = base64.b64decode(token_b64).decode("utf-8")
         except Exception as exc:
             raise RuntimeError(f"Failed to decode TOKEN_JSON_B64: {exc}") from exc
+
     if token_json:
         token_dir = os.path.dirname(token_path)
         if token_dir and not os.path.exists(token_dir):
             os.makedirs(token_dir, exist_ok=True)
         with open(token_path, "w", encoding="utf-8") as f:
             f.write(token_json)
-    return token_path
+        return token_path
+
+    # No token file and no env token — return None
+    return None
+
 
 
 def get_openai_client():
@@ -1876,13 +1893,13 @@ def options_chain():
         research=research,
         market_research=market_research,
     )
+app = Flask(__name__)
 
-
-if __name__ == "__main__":
-    app.run(
-        host="127.0.0.1",
-        port=8001,
-        ssl_context=("cert.pem", "key.pem"),
-        debug=True
-    )
+#if __name__ == "__main__":
+  #  app.run(
+     #   host="127.0.0.1",
+      #  port=8001,
+      #  ssl_context=("cert.pem", "key.pem"),
+       # debug=True
+   
 
