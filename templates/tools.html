@@ -56,7 +56,15 @@
     <details>
       <summary>Schwab Status Check</summary>
       <div class="details-body">
+        <a class="button" href="{{ url_for('tools', refresh_token=1) }}">Refresh Schwab Token</a>
         <a class="button" href="{{ url_for('tools', check_schwab=1) }}">Run Status Check</a>
+        {% if refresh_result %}
+          {% if refresh_result.ok %}
+            <div>Token refreshed (HTTP {{ refresh_result.status_code }})</div>
+          {% else %}
+            <div>Token refresh failed: {{ refresh_result.error }}</div>
+          {% endif %}
+        {% endif %}
         {% if status %}
           {% if status.ok %}
             <div>OK (HTTP {{ status.status_code }})</div>

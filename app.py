@@ -1618,11 +1618,19 @@ def tools():
     state = load_monitor_state()
     errors = load_error_log()
     status = None
+    refresh_result = None
     if request.args.get("clear_errors") == "1":
         save_monitor_state(state)
         with open(ERROR_LOG_PATH, "w", encoding="utf-8") as f:
             json.dump([], f, indent=2)
         errors = []
+    if request.args.get("refresh_token") == "1":
+        try:
+            client = get_client()
+            response = schwab_request(lambda: client.get_accounts(), "refresh_token")
+            refresh_result = {"ok": True, "status_code": response.status_code}
+        except Exception as exc:
+            refresh_result = {"ok": False, "error": str(exc)}
     if request.args.get("check_schwab") == "1":
         try:
             client = get_client()
@@ -1635,6 +1643,7 @@ def tools():
         state=state,
         errors=errors,
         status=status,
+        refresh_result=refresh_result,
     )
 
 
