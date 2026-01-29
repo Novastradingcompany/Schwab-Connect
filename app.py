@@ -51,6 +51,10 @@ _QUOTE_CACHE = {}
 _QUOTE_CACHE_TTL = 15
 MARKET_TICKERS = ["SPY", "QQQ", "IWM", "DIA"]
 _AUTH_CACHE = None
+_LAST_SCHWAB_ERROR = None
+_CHAIN_CACHE = {}
+_CHAIN_CACHE_TTL = 60
+_CHAIN_ERROR = {}
 NOVA_MODEL_OPTIONS = [
     "gpt-4o",
     "gpt-4.1",
@@ -260,6 +264,15 @@ def log_error(message, context=""):
         json.dump(data, f, indent=2)
 
 
+def _set_schwab_error(exc, context):
+    global _LAST_SCHWAB_ERROR
+    _LAST_SCHWAB_ERROR = {
+        "timestamp": time.time(),
+        "error": str(exc),
+        "context": context,
+    }
+
+
 def load_error_log():
     if not os.path.exists(ERROR_LOG_PATH):
         return []
@@ -277,6 +290,7 @@ def schwab_request(action, context):
             return action()
         except Exception as exc:
             last_exc = exc
+            _set_schwab_error(exc, context)
             log_error(exc, context=f"schwab:{context}:attempt{attempt + 1}")
             time.sleep(1 + attempt)
     raise last_exc
@@ -815,13 +829,52 @@ def flatten_option_map(exp_map):
 
 
 def fetch_option_chain(symbol):
+    now = time.time()
+    cached = _CHAIN_CACHE.get(symbol)
+    if cached and now - cached["ts"] <= _CHAIN_CACHE_TTL:
+        return cached["data"]
+    err = _CHAIN_ERROR.get(symbol)
+    if err and now - err["ts"] <= 120:
+        raise RuntimeError(f"Recent Schwab error for {symbol}; retry in a bit.")
     client = get_client()
     response = schwab_request(
         lambda: client.get_option_chain(symbol, include_underlying_quote=True),
         "get_option_chain",
     )
     response.raise_for_status()
-    return response.json()
+    data = response.json()
+    _CHAIN_CACHE[symbol] = {"ts": now, "data": data}
+    return data
+
+
+def get_token_status():
+    token_path = os.getenv("TOKEN_PATH", "token.json")
+    if not os.path.exists(token_path):
+        return None
+    try:
+        with open(token_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        token = payload.get("token", payload)
+        expires_at = token.get("expires_at")
+        if not expires_at:
+            return None
+        now = int(time.time())
+        return {
+            "expires_at": int(expires_at),
+            "seconds_left": int(expires_at) - now,
+        }
+    except Exception:
+        return None
+
+
+@app.context_processor
+def inject_schwab_status():
+    if not _LAST_SCHWAB_ERROR:
+        return {}
+    age = time.time() - _LAST_SCHWAB_ERROR["timestamp"]
+    if age > 1800:
+        return {}
+    return {"schwab_banner": _LAST_SCHWAB_ERROR}
 
 
 def get_chain_data(symbol):
@@ -1619,6 +1672,7 @@ def tools():
     errors = load_error_log()
     status = None
     refresh_result = None
+    token_status = get_token_status()
     if request.args.get("clear_errors") == "1":
         save_monitor_state(state)
         with open(ERROR_LOG_PATH, "w", encoding="utf-8") as f:
@@ -1644,6 +1698,7 @@ def tools():
         errors=errors,
         status=status,
         refresh_result=refresh_result,
+        token_status=token_status,
     )
 
 

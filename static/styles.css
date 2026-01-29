@@ -133,6 +133,15 @@ h1 {
   box-shadow: var(--shadow);
 }
 
+.banner {
+  background: rgba(197, 93, 61, 0.15);
+  border: 1px solid rgba(197, 93, 61, 0.4);
+  color: var(--ink);
+  padding: 10px 14px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

@@ -35,6 +35,11 @@
       {% endif %}
     </header>
     <main class="page">
+      {% if schwab_banner %}
+        <div class="banner">
+          Schwab issue: {{ schwab_banner.error }}
+        </div>
+      {% endif %}
       {% block content %}{% endblock %}
     </main>
   </body>
