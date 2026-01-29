@@ -406,10 +406,9 @@ def get_client():
     if _CLIENT is None:
         token_path = ensure_token_file()
 
-        # No token yet — user must log in first
+        # No token yet - user must log in first
         if not token_path or not os.path.exists(token_path):
-            print("No token file found — user must log in first.")
-            return None
+            raise RuntimeError("No token file found. Log in to Schwab first.")
 
         _CLIENT = client_from_token_file(
             token_path,
@@ -554,6 +553,7 @@ def fetch_positions():
                 "accountType": acct_type,
                 "symbol": symbol,
                 "assetType": asset_type,
+                "instrument": instrument,
                 "qty": qty,
                 "avgPrice": avg_price,
                 "marketValue": market_value,
@@ -1005,7 +1005,12 @@ def build_option_open_rows(positions, quotes, underlying_quotes, step, span):
         if strike is None or not underlying:
             continue
 
-        avg_price = _safe_float(pos.get("averagePrice") or pos.get("averageLongPrice") or pos.get("averageShortPrice")) or 0.0
+        avg_price = _safe_float(
+            pos.get("avgPrice")
+            or pos.get("averagePrice")
+            or pos.get("averageLongPrice")
+            or pos.get("averageShortPrice")
+        ) or 0.0
         qty = _safe_float(pos.get("qty")) or 0.0
         cost_basis = avg_price * qty * 100
 
@@ -1924,4 +1929,3 @@ def options_chain():
       #  ssl_context=("cert.pem", "key.pem"),
        # debug=True
    
-
