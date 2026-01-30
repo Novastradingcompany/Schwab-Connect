@@ -841,24 +841,23 @@ def fetch_option_chain(symbol):
         lambda: client.get_option_chain(symbol, include_underlying_quote=True),
         "get_option_chain",
     )
-    try:
-        response.raise_for_status()
-    except Exception as exc:
+    if response.status_code == 502:
+        body = ""
         try:
-            body = response.text if response is not None else ""
-            if body and len(body) > 500:
-                body = body[:500] + "..."
-            print(
-                "SCHWAB_OPTION_CHAIN_ERROR",
-                f"symbol={symbol}",
-                f"status={getattr(response, 'status_code', None)}",
-                f"url={getattr(response, 'url', None)}",
-                f"content_type={getattr(response, 'headers', {}).get('Content-Type') if response is not None else None}",
-                f"body={body}",
-            )
+            body = response.text or ""
         except Exception:
-            pass
-        raise exc
+            body = ""
+        too_big = "TooBigBody" in body or "Body buffer overflow" in body
+        if too_big:
+            response = schwab_request(
+                lambda: client.get_option_chain(
+                    symbol,
+                    include_underlying_quote=True,
+                    strike_count=30,
+                ),
+                "get_option_chain_limited",
+            )
+    response.raise_for_status()
     data = response.json()
     _CHAIN_CACHE[symbol] = {"ts": now, "data": data}
     return data
