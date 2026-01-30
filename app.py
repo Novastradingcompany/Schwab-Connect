@@ -841,7 +841,24 @@ def fetch_option_chain(symbol):
         lambda: client.get_option_chain(symbol, include_underlying_quote=True),
         "get_option_chain",
     )
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except Exception as exc:
+        try:
+            body = response.text if response is not None else ""
+            if body and len(body) > 500:
+                body = body[:500] + "..."
+            print(
+                "SCHWAB_OPTION_CHAIN_ERROR",
+                f"symbol={symbol}",
+                f"status={getattr(response, 'status_code', None)}",
+                f"url={getattr(response, 'url', None)}",
+                f"content_type={getattr(response, 'headers', {}).get('Content-Type') if response is not None else None}",
+                f"body={body}",
+            )
+        except Exception:
+            pass
+        raise exc
     data = response.json()
     _CHAIN_CACHE[symbol] = {"ts": now, "data": data}
     return data
