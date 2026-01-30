@@ -23,14 +23,14 @@
     <details>
       <summary>Timezone</summary>
       <div class="details-body">
-        <form method="get" action="{{ url_for('summary') }}">
+        <form method="get" action="{{ url_for('tools') }}">
           <label>
             Set timezone
             <select name="tz">
-              <option value="America/New_York">Eastern (ET)</option>
-              <option value="America/Chicago">Central (CT)</option>
-              <option value="America/Denver">Mountain (MT)</option>
-              <option value="America/Los_Angeles">Pacific (PT)</option>
+              <option value="America/New_York" {% if timezone == "America/New_York" %}selected{% endif %}>Eastern (ET)</option>
+              <option value="America/Chicago" {% if timezone == "America/Chicago" %}selected{% endif %}>Central (CT)</option>
+              <option value="America/Denver" {% if timezone == "America/Denver" %}selected{% endif %}>Mountain (MT)</option>
+              <option value="America/Los_Angeles" {% if timezone == "America/Los_Angeles" %}selected{% endif %}>Pacific (PT)</option>
             </select>
           </label>
           <div class="form-actions">

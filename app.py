@@ -1688,6 +1688,11 @@ def tools():
     errors = load_error_log()
     status = None
     refresh_result = None
+    settings = load_settings()
+    tz = request.args.get("tz")
+    if tz:
+        settings["timezone"] = tz
+        save_settings(settings)
     token_status = get_token_status()
     if request.args.get("clear_errors") == "1":
         save_monitor_state(state)
@@ -1715,6 +1720,7 @@ def tools():
         status=status,
         refresh_result=refresh_result,
         token_status=token_status,
+        timezone=settings.get("timezone", "UTC"),
     )
 
 
