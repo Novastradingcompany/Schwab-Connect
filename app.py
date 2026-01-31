@@ -1740,6 +1740,11 @@ def nova_chat():
     settings = load_settings()
     global NOVA_ERROR
     if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "clear":
+            NOVA_CHAT.clear()
+            NOVA_ERROR = None
+            return redirect(url_for("nova_chat"))
         message = request.form.get("message", "").strip()
         if message:
             NOVA_CHAT.append({"role": "user", "content": message})
