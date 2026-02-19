@@ -61,8 +61,9 @@ def scan_bull_put(chain: pd.DataFrame,
         credit_per_contract = calc_credit(sell_mid, buy_mid)
         total_credit = round(credit_per_contract * contracts, 2)
 
-        max_loss_val = calc_max_loss(width, credit_per_contract, contracts)
-        breakeven = calc_breakeven(float(sell_leg["strike"]), credit_per_contract, "put", contracts)
+        max_loss_val = calc_max_loss(width, total_credit, contracts)
+        max_loss_per_contract = calc_max_loss(width, credit_per_contract, 1)
+        breakeven = calc_breakeven(float(sell_leg["strike"]), credit_per_contract, "put", 1)
 
         iv_raw = sell_leg.get("impliedVolatility_raw", sell_leg.get("impliedVolatility", 0))
         try:
@@ -91,10 +92,10 @@ def scan_bull_put(chain: pd.DataFrame,
             spot=float(spot_price),
             width=width,
             credit=credit_per_contract,
-            max_loss=max_loss_val,
+            max_loss=max_loss_per_contract,
             opt_type="put",
             delta=delta_calc,
-            contracts=contracts,
+            contracts=1,
             iv=iv_calc,
             T=T,
             r=0.02,

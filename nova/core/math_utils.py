@@ -2,9 +2,9 @@ import math
 
 
 def calc_credit(sell_mid, buy_mid, contracts=1):
-    """Net credit collected per spread (in dollars)."""
+    """Net credit per 1-lot spread (in dollars)."""
     credit_per_contract = max(sell_mid - buy_mid, 0) * 100
-    return round(credit_per_contract * contracts, 2)
+    return round(credit_per_contract, 2)
 
 
 def calc_max_loss(width, credit, contracts=1):
@@ -20,7 +20,7 @@ def calc_max_loss(width, credit, contracts=1):
 
 def calc_breakeven(short_strike, credit, opt_type, contracts=1):
     """Breakeven for a vertical spread."""
-    credit_per_share = credit / (100 * contracts) if contracts > 0 else 0
+    credit_per_share = credit / 100 if credit is not None else 0
     if opt_type == "put":
         return short_strike - credit_per_share
     if opt_type == "call":
@@ -75,8 +75,8 @@ def calc_pop(short_strike, spot, width, credit, max_loss,
         prob_otm = 1 - prob_itm
         return round(prob_otm * 100, 1)
 
-    credit_per_share = credit / (100 * contracts) if contracts > 0 else 0
-    max_loss_per_share = max_loss / (100 * contracts) if contracts > 0 else 0
+    credit_per_share = credit / 100 if credit is not None else 0
+    max_loss_per_share = max_loss / 100 if max_loss is not None else 0
     denom = credit_per_share + max_loss_per_share
     if denom > 0:
         pop = (credit_per_share / denom) * 100

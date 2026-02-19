@@ -2298,9 +2298,21 @@ def nova_options():
                 raise RuntimeError("Select a trade row to explain.")
             prompt = (
                 "Explain this options trade in plain English. Summarize risk/reward, "
-                "breakeven, and an exit plan aligned to the user's rules. Advisory-only."
+                "breakeven, and an exit plan aligned to the user's rules. Advisory-only. "
+                "Use the numeric fields exactly as provided for credit, max loss, contracts, and breakeven."
             )
-            context = f"Symbol: {symbol}, spot: {spot_price}, cash_balance={cash_balance}, trade: {trade}. Research: {research}. Market: {market_research}."
+            trade_facts = (
+                f"trade_facts: total_credit={trade.get('Total Credit ($)')}, "
+                f"credit_per_spread={trade.get('Credit (Realistic)')}, "
+                f"max_loss={trade.get('Max Loss ($)')}, "
+                f"contracts={trade.get('Contracts')}, "
+                f"breakeven={trade.get('Breakeven')}, "
+                f"pop={trade.get('POP %')}"
+            )
+            context = (
+                f"Symbol: {symbol}, spot: {spot_price}, cash_balance={cash_balance}, trade: {trade}. "
+                f"{trade_facts}. Research: {research}. Market: {market_research}."
+            )
         else:
             prompt = (
                 "Analyze the current scan results and summarize the best opportunities. "
