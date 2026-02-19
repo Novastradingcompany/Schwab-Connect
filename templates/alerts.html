@@ -77,6 +77,22 @@
         </select>
         <textarea name="nova_role" rows="2" placeholder="Describe Nova's role">{{ settings.nova_role }}</textarea>
       </label>
+      <label>
+        Movers lookback (trading days)
+        <input type="number" step="1" min="1" name="movers_lookback_days" value="{{ settings.movers_lookback_days }}">
+      </label>
+      <label>
+        Movers count
+        <input type="number" step="1" min="1" name="movers_count" value="{{ settings.movers_count }}">
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="movers_include_positions" {% if settings.movers_include_positions %}checked{% endif %}>
+        Include current positions in movers universe
+      </label>
+      <label>
+        Movers universe (comma or space-separated)
+        <textarea name="movers_universe" rows="2" placeholder="AAPL MSFT NVDA">{{ settings.movers_universe }}</textarea>
+      </label>
     </div>
     <div class="form-actions">
       <button class="button" type="submit">Save Rules</button>

@@ -26,6 +26,16 @@
   </section>
 
   <form class="card form" method="post">
+    <input type="hidden" name="action" value="movers">
+    <div class="form-actions">
+      <button class="button" type="submit">Find Movers</button>
+    </div>
+    <p class="subtitle">
+      Scans watchlist + positions + custom universe over the last {{ settings.movers_lookback_days }} trading days.
+    </p>
+  </form>
+
+  <form class="card form" method="post">
     <label>
       Message
       <textarea name="message" rows="3" placeholder="Type your message to Nova"></textarea>

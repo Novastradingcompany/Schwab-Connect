@@ -10,6 +10,7 @@ from functools import wraps
 from email.message import EmailMessage
 import csv
 import io
+import re
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -84,6 +85,10 @@ def load_settings():
         "market_close_time": "16:00",
         "monitor_weekdays_only": True,
         "market_holidays": "",
+        "movers_lookback_days": 5,
+        "movers_count": 10,
+        "movers_include_positions": True,
+        "movers_universe": "",
     }
     if not os.path.exists(SETTINGS_PATH):
         save_settings(defaults)
@@ -375,6 +380,121 @@ def get_market_research():
     for symbol in MARKET_TICKERS:
         research.append(get_research_summary(symbol))
     return research
+
+
+def _parse_symbol_list(raw):
+    if not raw:
+        return []
+    parts = re.split(r"[,\s;]+", str(raw).upper())
+    return [p.strip().upper() for p in parts if p.strip()]
+
+
+def build_movers_universe(settings, positions=None):
+    symbols = set()
+    symbols.update(load_watchlist())
+    symbols.update(MARKET_TICKERS)
+    symbols.update(_parse_symbol_list(settings.get("movers_universe", "")))
+
+    if settings.get("movers_include_positions", True):
+        if positions is None:
+            try:
+                positions = fetch_positions()
+            except Exception:
+                positions = []
+        for pos in positions or []:
+            if (pos.get("assetType") or "").upper() == "OPTION":
+                continue
+            symbol = (pos.get("symbol") or "").upper().strip()
+            if symbol:
+                symbols.add(symbol)
+
+    return sorted(symbols)
+
+
+def scan_stock_movers(symbols, lookback_days=5, max_count=10):
+    if not symbols:
+        return {"movers": [], "errors": [], "lookback_days": lookback_days, "universe_size": 0}
+
+    try:
+        lookback_days = int(lookback_days)
+    except (TypeError, ValueError):
+        lookback_days = 5
+    lookback_days = max(1, lookback_days)
+
+    try:
+        max_count = int(max_count)
+    except (TypeError, ValueError):
+        max_count = 10
+    max_count = max(1, max_count)
+
+    fetch_days = max(lookback_days * 2, lookback_days + 5)
+    movers = []
+    errors = []
+
+    for symbol in symbols:
+        try:
+            history = fetch_price_history(symbol, days=fetch_days)
+            closes = _extract_closes(history)
+            if len(closes) <= lookback_days:
+                errors.append({"symbol": symbol, "error": "insufficient history"})
+                continue
+            last = closes[-1]
+            prior = closes[-1 - lookback_days]
+            if not prior or prior <= 0:
+                errors.append({"symbol": symbol, "error": "invalid prior close"})
+                continue
+            change_pct = ((last - prior) / prior) * 100
+            movers.append({
+                "symbol": symbol,
+                "last": last,
+                "prior": prior,
+                "change_pct": change_pct,
+                "direction": "up" if change_pct >= 0 else "down",
+            })
+        except Exception as exc:
+            errors.append({"symbol": symbol, "error": str(exc)})
+
+    movers.sort(key=lambda item: abs(item.get("change_pct") or 0), reverse=True)
+    return {
+        "movers": movers[:max_count],
+        "errors": errors,
+        "lookback_days": lookback_days,
+        "universe_size": len(symbols),
+    }
+
+
+def _format_movers_context(snapshot):
+    movers = snapshot.get("movers") or []
+    if not movers:
+        return "Movers scan returned no results."
+    rows = []
+    for entry in movers:
+        change = entry.get("change_pct")
+        last = entry.get("last")
+        symbol = entry.get("symbol")
+        if change is None or last is None:
+            continue
+        rows.append(f"{symbol} {change:+.2f}% (last={last:.2f})")
+    lookback = snapshot.get("lookback_days")
+    universe_size = snapshot.get("universe_size")
+    return (
+        f"Movers over last {lookback} trading days from universe size {universe_size}: "
+        + "; ".join(rows)
+    )
+
+
+def _wants_movers(text):
+    text = (text or "").lower()
+    triggers = (
+        "mover",
+        "movement",
+        "stocks to watch",
+        "top stocks",
+        "weekly",
+        "for the week",
+        "top picks",
+    )
+    return any(token in text for token in triggers)
 
 
 def load_watchlist():
@@ -1384,6 +1504,16 @@ def alerts():
         settings["market_open_time"] = request.form.get("market_open_time", settings["market_open_time"]).strip()
         settings["market_close_time"] = request.form.get("market_close_time", settings["market_close_time"]).strip()
         settings["market_holidays"] = request.form.get("market_holidays", settings.get("market_holidays", "")).strip()
+        settings["movers_lookback_days"] = int(request.form.get(
+            "movers_lookback_days",
+            settings.get("movers_lookback_days", 5),
+        ))
+        settings["movers_count"] = int(request.form.get(
+            "movers_count",
+            settings.get("movers_count", 10),
+        ))
+        settings["movers_include_positions"] = request.form.get("movers_include_positions") == "on"
+        settings["movers_universe"] = request.form.get("movers_universe", settings.get("movers_universe", "")).strip()
         save_settings(settings)
         return redirect(url_for("alerts"))
 
@@ -1746,6 +1876,13 @@ def nova_chat():
             NOVA_ERROR = None
             return redirect(url_for("nova_chat"))
         message = request.form.get("message", "").strip()
+        if action == "movers":
+            lookback = settings.get("movers_lookback_days", 5)
+            count = settings.get("movers_count", 10)
+            message = (
+                f"Scan for stock movers over the last {lookback} trading days and "
+                f"recommend {count} symbols to explore. Include both positive and negative movers."
+            )
         if message:
             NOVA_CHAT.append({"role": "user", "content": message})
             try:
@@ -1762,6 +1899,18 @@ def nova_chat():
                     "Use the user's rules and current positions for context, and ask clarifying "
                     "questions if needed."
                 )
+                movers_snapshot = None
+                if action == "movers" or _wants_movers(message):
+                    movers_universe = build_movers_universe(settings, positions=positions)
+                    movers_snapshot = scan_stock_movers(
+                        movers_universe,
+                        lookback_days=settings.get("movers_lookback_days", 5),
+                        max_count=settings.get("movers_count", 10),
+                    )
+                    system_prompt += (
+                        " Use the movers scan as the source of candidate symbols and "
+                        "return a concise list of 5-10 picks to explore."
+                    )
                 context = (
                     f"Rules: profit_target={settings['profit_target_pct']}%, "
                     f"max_loss={settings['max_loss_pct']}%, dte_exit={settings['dte_exit']}, "
@@ -1770,6 +1919,8 @@ def nova_chat():
                     f"Positions (up to 20): {positions_context}. "
                     f"Alerts: {current_alerts[:10]}"
                 )
+                if movers_snapshot:
+                    context = context + " " + _format_movers_context(movers_snapshot)
                 client = get_openai_client()
                 response = client.chat.completions.create(
                     model=settings["nova_model"],
