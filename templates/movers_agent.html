@@ -1,0 +1,96 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Movers Agent</h1>
+      <p class="subtitle">Run weekly ranking on a curated optionable universe and add picks to watchlist.</p>
+    </div>
+    <div class="pill">Universe: {{ universe_size }}</div>
+  </section>
+
+  {% if info %}
+    <div class="card">{{ info }}</div>
+  {% endif %}
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <form class="card form" method="post">
+    <input type="hidden" name="action" value="run_scan">
+    <div class="card-title">Run Weekly Scan</div>
+    <div class="form-grid">
+      <label>
+        Lookback (trading days)
+        <input type="number" min="1" step="1" name="lookback_days" value="{{ defaults.lookback_days }}">
+      </label>
+      <label>
+        Return count
+        <input type="number" min="1" step="1" name="top_n" value="{{ defaults.top_n }}">
+      </label>
+      <label>
+        Max scan time (seconds)
+        <input type="number" min="10" step="1" name="max_seconds" value="{{ defaults.max_seconds }}">
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="button" type="submit">Run Scan</button>
+    </div>
+  </form>
+
+  {% if snapshot %}
+    <section class="card">
+      <div class="card-title">Latest Snapshot</div>
+      <div class="card-meta">
+        Ran at {{ snapshot.ran_at }} | scanned {{ snapshot.scanned }}/{{ snapshot.universe_size }} |
+        {% if snapshot.timed_out %}timed out at {{ snapshot.max_seconds }}s{% else %}complete{% endif %}
+      </div>
+      <form method="post">
+        <input type="hidden" name="action" value="add_selected">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th>Stock</th>
+                <th>5D %</th>
+                <th>20D %</th>
+                <th>Vol 20D %</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in snapshot.rows %}
+                <tr>
+                  <td><input type="checkbox" name="symbols" value="{{ row.symbol }}"></td>
+                  <td>{{ row.name }} ({{ row.symbol }})</td>
+                  <td>{% if row.ret_5d is not none %}{{ "%.2f"|format(row.ret_5d) }}%{% endif %}</td>
+                  <td>{% if row.ret_20d is not none %}{{ "%.2f"|format(row.ret_20d) }}%{% endif %}</td>
+                  <td>{% if row.vol_20d is not none %}{{ "%.2f"|format(row.vol_20d) }}{% endif %}</td>
+                  <td>{% if row.score is not none %}{{ "%.2f"|format(row.score) }}{% endif %}</td>
+                </tr>
+              {% else %}
+                <tr><td colspan="6">No rows in latest snapshot.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="form-actions">
+          <button class="button" type="submit">Add Checked To Watchlist</button>
+        </div>
+      </form>
+
+      {% if snapshot.error_count %}
+        <details>
+          <summary>Scan errors ({{ snapshot.error_count }})</summary>
+          <div class="details-body">
+            <ul class="error-list">
+              {% for e in snapshot.error_samples %}
+                <li>{{ e }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </details>
+      {% endif %}
+    </section>
+  {% endif %}
+{% endblock %}

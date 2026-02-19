@@ -11,6 +11,7 @@ from email.message import EmailMessage
 import csv
 import io
 import re
+import math
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -49,6 +50,8 @@ TICKETS_PATH = "tickets.json"
 MONITOR_STATE_PATH = "monitor_state.json"
 ERROR_LOG_PATH = "error_log.json"
 SP500_PATH = os.path.join("nova-options-scanner-main", "nova-options-scanner-main", "sp500_symbols.json")
+OPTIONABLE_UNIVERSE_PATH = "optionable_universe.json"
+MOVERS_SNAPSHOT_PATH = "movers_snapshot.json"
 _QUOTE_CACHE = {}
 _QUOTE_CACHE_TTL = 15
 MARKET_TICKERS = ["SPY", "QQQ", "IWM", "DIA"]
@@ -590,6 +593,117 @@ def load_watchlist():
 def save_watchlist(data):
     with open(WATCHLIST_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+
+
+def load_optionable_universe():
+    if not os.path.exists(OPTIONABLE_UNIVERSE_PATH):
+        return []
+    try:
+        with open(OPTIONABLE_UNIVERSE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        universe = []
+        if not isinstance(data, list):
+            return []
+        for item in data:
+            if isinstance(item, dict):
+                symbol = (item.get("symbol") or "").upper().strip()
+                name = (item.get("name") or symbol).strip()
+            else:
+                symbol = str(item).upper().strip()
+                name = symbol
+            if symbol:
+                universe.append({"symbol": symbol, "name": name})
+        return universe
+    except Exception:
+        return []
+
+
+def load_movers_snapshot():
+    if not os.path.exists(MOVERS_SNAPSHOT_PATH):
+        return None
+    try:
+        with open(MOVERS_SNAPSHOT_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def save_movers_snapshot(data):
+    with open(MOVERS_SNAPSHOT_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def _realized_vol_pct(closes, window=20):
+    if len(closes) < window + 1:
+        return None
+    rets = []
+    for i in range(-window, 0):
+        prev_close = closes[i - 1]
+        curr_close = closes[i]
+        if prev_close <= 0:
+            continue
+        rets.append((curr_close / prev_close) - 1.0)
+    if len(rets) < 2:
+        return None
+    mean_ret = sum(rets) / len(rets)
+    variance = sum((r - mean_ret) ** 2 for r in rets) / (len(rets) - 1)
+    return math.sqrt(variance) * 100
+
+
+def run_optionable_weekly_scan(universe, lookback_days=5, top_n=10, max_seconds=25):
+    rows = []
+    errors = []
+    started = time.monotonic()
+    scanned = 0
+    fetch_days = max(lookback_days + 35, 60)
+
+    for item in universe:
+        if time.monotonic() - started >= max_seconds:
+            break
+        symbol = item.get("symbol")
+        name = item.get("name") or symbol
+        if not symbol:
+            continue
+        scanned += 1
+        try:
+            history = fetch_price_history(symbol, days=fetch_days)
+            closes = _extract_closes(history)
+            metrics = compute_trend_metrics(closes)
+            ret_5d = metrics.get("ret_5d")
+            ret_20d = metrics.get("ret_20d")
+            vol_20d = _realized_vol_pct(closes, window=20)
+            if ret_5d is None and ret_20d is None:
+                continue
+            score = abs(ret_5d or 0.0) + (abs(ret_20d or 0.0) * 0.5) + ((vol_20d or 0.0) * 0.5)
+            rows.append({
+                "symbol": symbol,
+                "name": name,
+                "last": metrics.get("last"),
+                "ret_5d": ret_5d,
+                "ret_20d": ret_20d,
+                "vol_20d": vol_20d,
+                "score": score,
+                "direction": "up" if (ret_5d or 0) >= 0 else "down",
+            })
+        except Exception as exc:
+            errors.append(f"{symbol}: {exc}")
+
+    rows.sort(key=lambda x: x.get("score") or 0, reverse=True)
+    timed_out = (time.monotonic() - started) >= max_seconds
+    snapshot = {
+        "ran_at": dt.datetime.now().isoformat(timespec="seconds"),
+        "lookback_days": lookback_days,
+        "top_n": top_n,
+        "max_seconds": max_seconds,
+        "timed_out": timed_out,
+        "universe_size": len(universe),
+        "scanned": scanned,
+        "rows": rows[:top_n],
+        "error_count": len(errors),
+        "error_samples": errors[:5],
+    }
+    return snapshot
 
 
 def load_tickets():
@@ -1701,6 +1815,63 @@ def watchlist():
         watchlist=watchlist_symbols,
         results=results,
         error=error,
+    )
+
+
+@app.route("/movers-agent", methods=["GET", "POST"])
+def movers_agent():
+    info = None
+    error = None
+    snapshot = load_movers_snapshot()
+    universe = load_optionable_universe()
+    lookback_days = int((snapshot or {}).get("lookback_days", 5))
+    top_n = int((snapshot or {}).get("top_n", 10))
+    max_seconds = int((snapshot or {}).get("max_seconds", 25))
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "run_scan":
+            try:
+                lookback_days = max(1, int(request.form.get("lookback_days", 5)))
+                top_n = max(1, int(request.form.get("top_n", 10)))
+                max_seconds = max(10, int(request.form.get("max_seconds", 25)))
+                if not universe:
+                    raise RuntimeError("No optionable universe loaded. Check optionable_universe.json.")
+                snapshot = run_optionable_weekly_scan(
+                    universe,
+                    lookback_days=lookback_days,
+                    top_n=top_n,
+                    max_seconds=max_seconds,
+                )
+                save_movers_snapshot(snapshot)
+                rows_count = len(snapshot.get("rows") or [])
+                info = f"Weekly scan completed. Returned {rows_count} symbols."
+            except Exception as exc:
+                error = str(exc)
+        elif action == "add_selected":
+            selected = [s.upper().strip() for s in request.form.getlist("symbols") if s.strip()]
+            if not selected:
+                error = "No symbols selected."
+            else:
+                watchlist_symbols = set(load_watchlist())
+                before = len(watchlist_symbols)
+                watchlist_symbols.update(selected)
+                save_watchlist(sorted(watchlist_symbols))
+                added = len(watchlist_symbols) - before
+                info = f"Added {added} symbol(s) to watchlist."
+            snapshot = load_movers_snapshot()
+
+    return render_template(
+        "movers_agent.html",
+        snapshot=snapshot,
+        universe_size=len(universe),
+        info=info,
+        error=error,
+        defaults={
+            "lookback_days": lookback_days,
+            "top_n": top_n,
+            "max_seconds": max_seconds,
+        },
     )
 
 
