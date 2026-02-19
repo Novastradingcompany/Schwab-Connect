@@ -57,6 +57,8 @@ _LAST_SCHWAB_ERROR = None
 _CHAIN_CACHE = {}
 _CHAIN_CACHE_TTL = 60
 _CHAIN_ERROR = {}
+_OPTIONABLE_CACHE = {}
+_OPTIONABLE_CACHE_TTL = 86400
 NOVA_MODEL_OPTIONS = [
     "gpt-4o",
     "gpt-4.1",
@@ -436,6 +438,32 @@ def build_movers_universe(settings, positions=None):
     return sorted(symbols)
 
 
+def _rotate_symbols_for_week(symbols):
+    if not symbols:
+        return []
+    ordered = sorted(symbols)
+    today = dt.date.today()
+    week_key = (today.year * 100) + today.isocalendar().week
+    offset = week_key % len(ordered)
+    return ordered[offset:] + ordered[:offset]
+
+
+def symbol_has_options(symbol):
+    now = time.time()
+    cached = _OPTIONABLE_CACHE.get(symbol)
+    if cached and now - cached["ts"] <= _OPTIONABLE_CACHE_TTL:
+        return bool(cached["value"])
+    try:
+        chain = fetch_option_chain(symbol)
+        call_map = chain.get("callExpDateMap") or {}
+        put_map = chain.get("putExpDateMap") or {}
+        has_data = bool(call_map or put_map)
+    except Exception:
+        has_data = False
+    _OPTIONABLE_CACHE[symbol] = {"ts": now, "value": has_data}
+    return has_data
+
+
 def scan_stock_movers(symbols, lookback_days=5, max_count=10, max_seconds=20):
     if not symbols:
         return {"movers": [], "errors": [], "lookback_days": lookback_days, "universe_size": 0}
@@ -459,6 +487,7 @@ def scan_stock_movers(symbols, lookback_days=5, max_count=10, max_seconds=20):
     max_seconds = max(5, max_seconds)
 
     fetch_days = max(lookback_days * 2, lookback_days + 5)
+    symbols = _rotate_symbols_for_week(symbols)
     movers = []
     errors = []
     start = time.monotonic()
@@ -490,8 +519,20 @@ def scan_stock_movers(symbols, lookback_days=5, max_count=10, max_seconds=20):
             errors.append({"symbol": symbol, "error": str(exc)})
 
     movers.sort(key=lambda item: abs(item.get("change_pct") or 0), reverse=True)
+
+    optionable = []
+    for item in movers:
+        if len(optionable) >= max_count:
+            break
+        if time.monotonic() - start >= max_seconds:
+            errors.append({"symbol": None, "error": f"optionable_filter_timeout_after_{max_seconds}s"})
+            break
+        symbol = item.get("symbol")
+        if symbol and symbol_has_options(symbol):
+            optionable.append(item)
+
     return {
-        "movers": movers[:max_count],
+        "movers": optionable,
         "errors": errors,
         "lookback_days": lookback_days,
         "universe_size": len(symbols),
