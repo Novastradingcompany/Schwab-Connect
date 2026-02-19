@@ -48,6 +48,18 @@
         <input type="number" step="1" min="1" name="contracts" value="{{ contracts }}">
       </label>
       <label>
+        Pricing mode
+        <select name="pricing_mode">
+          <option value="mid" {% if pricing_mode == "mid" %}selected{% endif %}>Mid</option>
+          <option value="natural" {% if pricing_mode == "natural" %}selected{% endif %}>Natural (Bid/Ask)</option>
+          <option value="custom" {% if pricing_mode == "custom" %}selected{% endif %}>Custom limit</option>
+        </select>
+      </label>
+      <label>
+        Custom limit (per spread)
+        <input type="number" step="0.01" min="0" name="custom_limit" value="{{ custom_limit }}" placeholder="e.g. 0.46">
+      </label>
+      <label>
         Cash Balance
         <input type="number" step="50" min="0" name="cash" value="{{ cash_balance }}">
       </label>
@@ -157,6 +169,8 @@
         <input type="hidden" name="width" value="{{ width }}">
         <input type="hidden" name="min_pop" value="{{ min_pop }}">
         <input type="hidden" name="contracts" value="{{ contracts }}">
+        <input type="hidden" name="pricing_mode" value="{{ pricing_mode }}">
+        <input type="hidden" name="custom_limit" value="{{ custom_limit }}">
         <input type="hidden" name="cash" value="{{ cash_balance }}">
         <input type="hidden" name="max_loss" value="{{ max_loss }}">
         {% if raw_mode %}<input type="hidden" name="raw" value="1">{% endif %}
@@ -174,6 +188,8 @@
       <input type="hidden" name="width" value="{{ width }}">
       <input type="hidden" name="min_pop" value="{{ min_pop }}">
       <input type="hidden" name="contracts" value="{{ contracts }}">
+      <input type="hidden" name="pricing_mode" value="{{ pricing_mode }}">
+      <input type="hidden" name="custom_limit" value="{{ custom_limit }}">
       <input type="hidden" name="cash" value="{{ cash_balance }}">
       <input type="hidden" name="max_loss" value="{{ max_loss }}">
       {% if raw_mode %}<input type="hidden" name="raw" value="1">{% endif %}
@@ -223,6 +239,8 @@
         <input type="hidden" name="width" value="{{ width }}">
         <input type="hidden" name="min_pop" value="{{ min_pop }}">
         <input type="hidden" name="contracts" value="{{ contracts }}">
+        <input type="hidden" name="pricing_mode" value="{{ pricing_mode }}">
+        <input type="hidden" name="custom_limit" value="{{ custom_limit }}">
         <input type="hidden" name="cash" value="{{ cash_balance }}">
         <input type="hidden" name="max_loss" value="{{ max_loss }}">
         {% if raw_mode %}<input type="hidden" name="raw" value="1">{% endif %}

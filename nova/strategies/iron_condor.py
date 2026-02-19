@@ -33,7 +33,9 @@ def scan_iron_condor(chains: dict,
                      max_loss: float,
                      min_pop: float,
                      raw_mode: bool,
-                     contracts: int = 1) -> pd.DataFrame:
+                     contracts: int = 1,
+                     pricing_mode: str = "mid",
+                     custom_limit: float | None = None) -> pd.DataFrame:
     """
     Scan Iron Condor setups by pairing Bull Put and Bear Call spreads.
     """
@@ -47,11 +49,15 @@ def scan_iron_condor(chains: dict,
         puts, spot_price, expiry, dte, T,
         max_width, max_loss, min_pop if not raw_mode else 0, True,
         contracts,
+        pricing_mode=pricing_mode,
+        custom_limit=custom_limit,
     )
     df_calls = scan_bear_call(
         calls, spot_price, expiry, dte, T,
         max_width, max_loss, min_pop if not raw_mode else 0, True,
         contracts,
+        pricing_mode=pricing_mode,
+        custom_limit=custom_limit,
     )
 
     if df_puts is None or df_puts.empty or df_calls is None or df_calls.empty:

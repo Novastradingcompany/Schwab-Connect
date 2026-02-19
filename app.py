@@ -1243,7 +1243,8 @@ def get_chain_data(symbol):
     return spot_price, call_map, put_map, expirations
 
 
-def run_scan(symbol, expiry, strategy, width, max_loss, min_pop, raw_mode, contracts):
+def run_scan(symbol, expiry, strategy, width, max_loss, min_pop, raw_mode, contracts,
+             pricing_mode="mid", custom_limit=None):
     spot_price, call_map, put_map, expirations = get_chain_data(symbol)
     if not expiry:
         return None, spot_price, expirations
@@ -1261,17 +1262,23 @@ def run_scan(symbol, expiry, strategy, width, max_loss, min_pop, raw_mode, contr
         results_df = scan_bull_put(
             puts_df, spot_price, expiry, dte, T,
             width, max_loss, min_pop, raw_mode, contracts,
+            pricing_mode=pricing_mode,
+            custom_limit=custom_limit,
         )
     elif strategy == "bear_call":
         results_df = scan_bear_call(
             calls_df, spot_price, expiry, dte, T,
             width, max_loss, min_pop, raw_mode, contracts,
+            pricing_mode=pricing_mode,
+            custom_limit=custom_limit,
         )
     else:
         results_df = scan_iron_condor(
             {"puts": puts_df, "calls": calls_df},
             spot_price, expiry, dte, T,
             width, max_loss, min_pop, raw_mode, contracts,
+            pricing_mode=pricing_mode,
+            custom_limit=custom_limit,
         )
 
     return results_df, spot_price, expirations
@@ -1579,7 +1586,7 @@ def format_results(df):
         return [], []
     view = df.copy()
 
-    money_cols = ["Credit (Realistic)", "Total Credit ($)", "Max Loss ($)", "Breakeven", "Spot"]
+    money_cols = ["Credit (Realistic)", "Credit (Mid $)", "Credit (Natural $)", "Total Credit ($)", "Max Loss ($)", "Breakeven", "Spot"]
     percent_cols = ["POP %", "Distance %"]
 
     for col in money_cols:
@@ -2225,6 +2232,16 @@ def nova_options():
     min_pop = float(request.form.get("min_pop", 80))
     contracts = int(request.form.get("contracts", 1))
     raw_mode = request.form.get("raw", "") == "1"
+    pricing_mode = request.form.get("pricing_mode", "mid").strip().lower()
+    if pricing_mode not in {"mid", "natural", "custom"}:
+        pricing_mode = "mid"
+    custom_limit_raw = request.form.get("custom_limit", "").strip()
+    custom_limit = None
+    if custom_limit_raw:
+        try:
+            custom_limit = float(custom_limit_raw)
+        except ValueError:
+            custom_limit = None
     cash_balance = int(request.form.get("cash", 2000))
     max_loss = float(request.form.get("max_loss", get_max_loss_threshold(cash_balance)))
     expiry = request.form.get("expiry", "")
@@ -2232,7 +2249,8 @@ def nova_options():
 
     try:
         results_df, spot_price, expirations = run_scan(
-            symbol, expiry, strategy, width, max_loss, min_pop, raw_mode, contracts
+            symbol, expiry, strategy, width, max_loss, min_pop, raw_mode, contracts,
+            pricing_mode=pricing_mode, custom_limit=custom_limit
         )
         results_records = []
         if results_df is not None and not results_df.empty:
@@ -2288,6 +2306,8 @@ def nova_options():
                 contracts=contracts,
                 cash=cash_balance,
                 max_loss=max_loss,
+                pricing_mode=pricing_mode,
+                custom_limit=custom_limit if custom_limit is not None else "",
                 raw="1" if raw_mode else "",
             ))
 
@@ -2311,7 +2331,8 @@ def nova_options():
             )
             context = (
                 f"Symbol: {symbol}, spot: {spot_price}, cash_balance={cash_balance}, trade: {trade}. "
-                f"{trade_facts}. Research: {research}. Market: {market_research}."
+                f"{trade_facts}. pricing_mode={pricing_mode}, custom_limit={custom_limit}. "
+                f"Research: {research}. Market: {market_research}."
             )
         else:
             prompt = (
@@ -2347,6 +2368,8 @@ def nova_options():
         contracts=contracts,
         cash=cash_balance,
         max_loss=max_loss,
+        pricing_mode=pricing_mode,
+        custom_limit=custom_limit if custom_limit is not None else "",
         raw="1" if raw_mode else "",
     ))
 
@@ -2362,6 +2385,10 @@ def nova_options_clear():
     min_pop = float(request.form.get("min_pop", 80))
     contracts = int(request.form.get("contracts", 1))
     raw_mode = request.form.get("raw", "") == "1"
+    pricing_mode = request.form.get("pricing_mode", "mid").strip().lower()
+    if pricing_mode not in {"mid", "natural", "custom"}:
+        pricing_mode = "mid"
+    custom_limit_raw = request.form.get("custom_limit", "").strip()
     cash_balance = int(request.form.get("cash", 2000))
     max_loss = float(request.form.get("max_loss", get_max_loss_threshold(cash_balance)))
     expiry = request.form.get("expiry", "")
@@ -2375,6 +2402,8 @@ def nova_options_clear():
         contracts=contracts,
         cash=cash_balance,
         max_loss=max_loss,
+        pricing_mode=pricing_mode,
+        custom_limit=custom_limit_raw,
         raw="1" if raw_mode else "",
     ))
 
@@ -2386,6 +2415,16 @@ def options_chain():
     min_pop = float(request.args.get("min_pop", 80))
     contracts = int(request.args.get("contracts", 1))
     raw_mode = request.args.get("raw", "") == "1"
+    pricing_mode = request.args.get("pricing_mode", "mid").strip().lower()
+    if pricing_mode not in {"mid", "natural", "custom"}:
+        pricing_mode = "mid"
+    custom_limit_raw = request.args.get("custom_limit", "").strip()
+    custom_limit = None
+    if custom_limit_raw:
+        try:
+            custom_limit = float(custom_limit_raw)
+        except ValueError:
+            custom_limit = None
     cash_balance = int(request.args.get("cash", 2000))
     max_loss = float(request.args.get("max_loss", get_max_loss_threshold(cash_balance)))
     expiry = request.args.get("expiry", "")
@@ -2402,7 +2441,8 @@ def options_chain():
 
     try:
         results_df, spot_price, expirations = run_scan(
-            symbol, expiry, strategy, width, max_loss, min_pop, raw_mode, contracts
+            symbol, expiry, strategy, width, max_loss, min_pop, raw_mode, contracts,
+            pricing_mode=pricing_mode, custom_limit=custom_limit
         )
         if results_df is not None:
             results_columns, results_rows = format_results(results_df)
@@ -2431,6 +2471,8 @@ def options_chain():
         min_pop=min_pop,
         contracts=contracts,
         raw_mode=raw_mode,
+        pricing_mode=pricing_mode,
+        custom_limit=custom_limit_raw,
         cash_balance=cash_balance,
         max_loss=max_loss,
         expiry=expiry,

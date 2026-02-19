@@ -16,7 +16,9 @@ def scan_bear_call(chain: pd.DataFrame,
                    max_loss: float,
                    min_pop: float,
                    raw_mode: bool,
-                   contracts: int = 1) -> pd.DataFrame:
+                   contracts: int = 1,
+                   pricing_mode: str = "mid",
+                   custom_limit: float | None = None) -> pd.DataFrame:
     """
     Scan Bear Call vertical spreads:
       - Sell lower strike CALL, buy higher strike CALL.
@@ -57,8 +59,15 @@ def scan_bear_call(chain: pd.DataFrame,
 
         sell_mid = (sell_bid + sell_ask) / 2
         buy_mid = (buy_bid + buy_ask) / 2
+        credit_mid = calc_credit(sell_mid, buy_mid)
+        credit_natural = calc_credit(sell_bid, buy_ask)
 
-        credit_per_contract = calc_credit(sell_mid, buy_mid)
+        if pricing_mode == "natural":
+            credit_per_contract = credit_natural
+        elif pricing_mode == "custom" and custom_limit is not None:
+            credit_per_contract = max(float(custom_limit) * 100, 0.0)
+        else:
+            credit_per_contract = credit_mid
         total_credit = round(credit_per_contract * contracts, 2)
 
         max_loss_val = calc_max_loss(width, total_credit, contracts)
@@ -111,6 +120,8 @@ def scan_bear_call(chain: pd.DataFrame,
             "DTE": int(dte),
             "Trade": f"Sell {sell_leg['strike']} / Buy {buy_leg['strike']} CALL",
             "Credit (Realistic)": round(credit_per_contract, 2),
+            "Credit (Mid $)": round(credit_mid, 2),
+            "Credit (Natural $)": round(credit_natural, 2),
             "Total Credit ($)": total_credit,
             "Max Loss ($)": round(max_loss_val, 2),
             "POP %": round(float(pop), 1),
