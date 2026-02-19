@@ -48,6 +48,7 @@ WATCHLIST_PATH = "watchlist.json"
 TICKETS_PATH = "tickets.json"
 MONITOR_STATE_PATH = "monitor_state.json"
 ERROR_LOG_PATH = "error_log.json"
+SP500_PATH = os.path.join("nova-options-scanner-main", "nova-options-scanner-main", "sp500_symbols.json")
 _QUOTE_CACHE = {}
 _QUOTE_CACHE_TTL = 15
 MARKET_TICKERS = ["SPY", "QQQ", "IWM", "DIA"]
@@ -89,6 +90,7 @@ def load_settings():
         "movers_count": 10,
         "movers_include_positions": True,
         "movers_universe": "",
+        "movers_use_sp500": False,
     }
     if not os.path.exists(SETTINGS_PATH):
         save_settings(defaults)
@@ -382,6 +384,26 @@ def get_market_research():
     return research
 
 
+def load_sp500_symbols():
+    if not os.path.exists(SP500_PATH):
+        return []
+    try:
+        with open(SP500_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        symbols = []
+        if isinstance(data, list):
+            for entry in data:
+                if isinstance(entry, dict):
+                    sym = (entry.get("symbol") or "").upper().strip()
+                else:
+                    sym = str(entry).upper().strip()
+                if sym:
+                    symbols.append(sym)
+        return symbols
+    except Exception:
+        return []
+
+
 def _parse_symbol_list(raw):
     if not raw:
         return []
@@ -394,6 +416,8 @@ def build_movers_universe(settings, positions=None):
     symbols.update(load_watchlist())
     symbols.update(MARKET_TICKERS)
     symbols.update(_parse_symbol_list(settings.get("movers_universe", "")))
+    if settings.get("movers_use_sp500"):
+        symbols.update(load_sp500_symbols())
 
     if settings.get("movers_include_positions", True):
         if positions is None:
@@ -565,11 +589,30 @@ def ensure_token_file():
     token_json = os.getenv("TOKEN_JSON")
     token_b64 = os.getenv("TOKEN_JSON_B64")
 
-    if token_b64 and not token_json:
+    decoded_b64 = None
+    if token_b64:
         try:
-            token_json = base64.b64decode(token_b64).decode("utf-8")
+            decoded_b64 = base64.b64decode(token_b64).decode("utf-8")
         except Exception as exc:
             raise RuntimeError(f"Failed to decode TOKEN_JSON_B64: {exc}") from exc
+
+    # If both are provided, prefer the newest token payload
+    if token_json or decoded_b64:
+        candidates = []
+        for raw in (token_json, decoded_b64):
+            if not raw:
+                continue
+            try:
+                payload = json.loads(raw)
+            except Exception:
+                continue
+            token = payload.get("token", payload) if isinstance(payload, dict) else {}
+            expires_at = token.get("expires_at") or payload.get("expires_at") or 0
+            creation_ts = payload.get("creation_timestamp") or 0
+            candidates.append((expires_at, creation_ts, raw))
+        if candidates:
+            candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+            token_json = candidates[0][2]
 
     if token_json:
         token_dir = os.path.dirname(token_path)
@@ -1514,6 +1557,7 @@ def alerts():
         ))
         settings["movers_include_positions"] = request.form.get("movers_include_positions") == "on"
         settings["movers_universe"] = request.form.get("movers_universe", settings.get("movers_universe", "")).strip()
+        settings["movers_use_sp500"] = request.form.get("movers_use_sp500") == "on"
         save_settings(settings)
         return redirect(url_for("alerts"))
 

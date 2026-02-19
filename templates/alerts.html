@@ -89,6 +89,10 @@
         <input type="checkbox" name="movers_include_positions" {% if settings.movers_include_positions %}checked{% endif %}>
         Include current positions in movers universe
       </label>
+      <label class="checkbox">
+        <input type="checkbox" name="movers_use_sp500" {% if settings.movers_use_sp500 %}checked{% endif %}>
+        Include S&amp;P 500 universe (sp500_symbols.json)
+      </label>
       <label>
         Movers universe (comma or space-separated)
         <textarea name="movers_universe" rows="2" placeholder="AAPL MSFT NVDA">{{ settings.movers_universe }}</textarea>
