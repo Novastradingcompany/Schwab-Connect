@@ -91,6 +91,7 @@ def load_settings():
         "movers_include_positions": True,
         "movers_universe": "",
         "movers_use_sp500": False,
+        "movers_max_seconds": 20,
     }
     if not os.path.exists(SETTINGS_PATH):
         save_settings(defaults)
@@ -435,7 +436,7 @@ def build_movers_universe(settings, positions=None):
     return sorted(symbols)
 
 
-def scan_stock_movers(symbols, lookback_days=5, max_count=10):
+def scan_stock_movers(symbols, lookback_days=5, max_count=10, max_seconds=20):
     if not symbols:
         return {"movers": [], "errors": [], "lookback_days": lookback_days, "universe_size": 0}
 
@@ -451,11 +452,21 @@ def scan_stock_movers(symbols, lookback_days=5, max_count=10):
         max_count = 10
     max_count = max(1, max_count)
 
+    try:
+        max_seconds = int(max_seconds)
+    except (TypeError, ValueError):
+        max_seconds = 20
+    max_seconds = max(5, max_seconds)
+
     fetch_days = max(lookback_days * 2, lookback_days + 5)
     movers = []
     errors = []
+    start = time.monotonic()
 
     for symbol in symbols:
+        if time.monotonic() - start >= max_seconds:
+            errors.append({"symbol": None, "error": f"scan_timeout_after_{max_seconds}s"})
+            break
         try:
             history = fetch_price_history(symbol, days=fetch_days)
             closes = _extract_closes(history)
@@ -1558,6 +1569,10 @@ def alerts():
         settings["movers_include_positions"] = request.form.get("movers_include_positions") == "on"
         settings["movers_universe"] = request.form.get("movers_universe", settings.get("movers_universe", "")).strip()
         settings["movers_use_sp500"] = request.form.get("movers_use_sp500") == "on"
+        settings["movers_max_seconds"] = int(request.form.get(
+            "movers_max_seconds",
+            settings.get("movers_max_seconds", 20),
+        ))
         save_settings(settings)
         return redirect(url_for("alerts"))
 
@@ -1950,6 +1965,7 @@ def nova_chat():
                         movers_universe,
                         lookback_days=settings.get("movers_lookback_days", 5),
                         max_count=settings.get("movers_count", 10),
+                        max_seconds=settings.get("movers_max_seconds", 20),
                     )
                     system_prompt += (
                         " Use the movers scan as the source of candidate symbols and "

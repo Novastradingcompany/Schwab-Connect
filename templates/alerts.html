@@ -94,6 +94,10 @@
         Include S&amp;P 500 universe (sp500_symbols.json)
       </label>
       <label>
+        Movers scan timeout (seconds)
+        <input type="number" step="1" min="5" name="movers_max_seconds" value="{{ settings.movers_max_seconds }}">
+      </label>
+      <label>
         Movers universe (comma or space-separated)
         <textarea name="movers_universe" rows="2" placeholder="AAPL MSFT NVDA">{{ settings.movers_universe }}</textarea>
       </label>
