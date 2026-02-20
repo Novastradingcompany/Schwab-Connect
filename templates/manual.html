@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>User Manual</h1>
+      <p class="subtitle">Reference guide for setup, scans, movers, and troubleshooting.</p>
+    </div>
+    <div class="pill">docs/manual.md</div>
+  </section>
+
+  <section class="card">
+    <pre class="nova-response">{{ manual_text }}</pre>
+  </section>
+{% endblock %}

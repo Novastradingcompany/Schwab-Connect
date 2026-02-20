@@ -52,6 +52,7 @@ ERROR_LOG_PATH = "error_log.json"
 SP500_PATH = os.path.join("nova-options-scanner-main", "nova-options-scanner-main", "sp500_symbols.json")
 OPTIONABLE_UNIVERSE_PATH = "optionable_universe.json"
 MOVERS_SNAPSHOT_PATH = "movers_snapshot.json"
+MANUAL_PATH = os.path.join("docs", "manual.md")
 _QUOTE_CACHE = {}
 _QUOTE_CACHE_TTL = 15
 MARKET_TICKERS = ["SPY", "QQQ", "IWM", "DIA"]
@@ -632,6 +633,16 @@ def load_movers_snapshot():
 def save_movers_snapshot(data):
     with open(MOVERS_SNAPSHOT_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+
+
+def load_manual_text():
+    if not os.path.exists(MANUAL_PATH):
+        return "Manual not found."
+    try:
+        with open(MANUAL_PATH, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as exc:
+        return f"Failed to load manual: {exc}"
 
 
 def _realized_vol_pct(closes, window=20):
@@ -2130,6 +2141,11 @@ def tools():
         token_status=token_status,
         timezone=settings.get("timezone", "UTC"),
     )
+
+
+@app.route("/manual")
+def manual():
+    return render_template("manual.html", manual_text=load_manual_text())
 
 
 @app.errorhandler(404)
