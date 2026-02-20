@@ -202,7 +202,8 @@
         <button class="button" type="submit" formaction="{{ url_for('create_ticket') }}">Create trade ticket</button>
       </div>
 
-      <div class="table-wrap" data-refresh="{{ auto_refresh }}">
+      <div class="column-toggle-bar" data-column-toggle-target="options-results"></div>
+      <div class="table-wrap" data-refresh="{{ auto_refresh }}" data-column-toggle="1">
         <table>
           <thead>
             <tr>
