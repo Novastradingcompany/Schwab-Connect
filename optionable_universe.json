@@ -86,5 +86,8 @@
   {"symbol": "ARKK", "name": "ARK Innovation ETF"},
   {"symbol": "TLT", "name": "iShares 20+ Year Treasury Bond ETF"},
   {"symbol": "ROK", "name": "ROkU"},
-  {"symbol": "SNOW", "name": "Snowflake"}
+  {"symbol": "SNOW", "name": "Snowflake"},
+  {"symbol": "HOG", "name": "Harley-Davidson"},
+  {"symbol": "AOS", "name": "A. O. Smith"},
+  {"symbol": "AZO", "name": "AutoZone"}
 ]
