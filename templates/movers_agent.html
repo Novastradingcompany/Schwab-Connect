@@ -41,7 +41,8 @@
     <section class="card">
       <div class="card-title">Latest Snapshot</div>
       <div class="card-meta">
-        Ran at {{ snapshot.ran_at }} | scanned {{ snapshot.scanned }}/{{ snapshot.universe_size }} |
+        Ran at {{ snapshot.ran_at }} | scanned this run {{ snapshot.scanned_this_run or snapshot.scanned }}/{{ snapshot.universe_size }} |
+        covered {{ snapshot.covered_count or (snapshot.rows|length) }}/{{ snapshot.universe_size }} |
         {% if snapshot.timed_out %}timed out at {{ snapshot.max_seconds }}s{% else %}complete{% endif %}
       </div>
       <form method="post">

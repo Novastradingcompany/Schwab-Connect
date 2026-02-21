@@ -662,16 +662,49 @@ def _realized_vol_pct(closes, window=20):
     return math.sqrt(variance) * 100
 
 
-def run_optionable_weekly_scan(universe, lookback_days=5, top_n=10, max_seconds=25):
-    rows = []
+def run_optionable_weekly_scan(universe, lookback_days=5, top_n=10, max_seconds=25, previous=None):
+    rows_cache = {}
+    if isinstance(previous, dict):
+        prev_lookback = int(previous.get("lookback_days", lookback_days))
+        if prev_lookback == int(lookback_days):
+            for item in previous.get("rows_cache", []) or []:
+                symbol = (item.get("symbol") or "").upper().strip()
+                if symbol:
+                    rows_cache[symbol] = item
     errors = []
     started = time.monotonic()
     scanned = 0
     fetch_days = max(lookback_days + 35, 60)
+    total_symbols = len(universe)
+    if total_symbols == 0:
+        return {
+            "ran_at": dt.datetime.now().isoformat(timespec="seconds"),
+            "lookback_days": lookback_days,
+            "top_n": top_n,
+            "max_seconds": max_seconds,
+            "timed_out": False,
+            "universe_size": 0,
+            "scanned": 0,
+            "scanned_this_run": 0,
+            "covered_count": 0,
+            "next_index": 0,
+            "rows": [],
+            "rows_cache": [],
+            "error_count": 0,
+            "error_samples": [],
+        }
 
-    for item in universe:
+    start_index = 0
+    if isinstance(previous, dict):
+        prev_lookback = int(previous.get("lookback_days", lookback_days))
+        if prev_lookback == int(lookback_days):
+            start_index = int(previous.get("next_index", 0)) % total_symbols
+
+    for step in range(total_symbols):
         if time.monotonic() - started >= max_seconds:
             break
+        idx = (start_index + step) % total_symbols
+        item = universe[idx]
         symbol = item.get("symbol")
         name = item.get("name") or symbol
         if not symbol:
@@ -687,7 +720,7 @@ def run_optionable_weekly_scan(universe, lookback_days=5, top_n=10, max_seconds=
             if ret_5d is None and ret_20d is None:
                 continue
             score = abs(ret_5d or 0.0) + (abs(ret_20d or 0.0) * 0.5) + ((vol_20d or 0.0) * 0.5)
-            rows.append({
+            rows_cache[symbol] = {
                 "symbol": symbol,
                 "name": name,
                 "last": metrics.get("last"),
@@ -696,12 +729,15 @@ def run_optionable_weekly_scan(universe, lookback_days=5, top_n=10, max_seconds=
                 "vol_20d": vol_20d,
                 "score": score,
                 "direction": "up" if (ret_5d or 0) >= 0 else "down",
-            })
+            }
         except Exception as exc:
             errors.append(f"{symbol}: {exc}")
 
+    rows = list(rows_cache.values())
     rows.sort(key=lambda x: x.get("score") or 0, reverse=True)
     timed_out = (time.monotonic() - started) >= max_seconds
+    next_index = (start_index + scanned) % total_symbols if total_symbols else 0
+    covered_count = len(rows_cache)
     snapshot = {
         "ran_at": dt.datetime.now().isoformat(timespec="seconds"),
         "lookback_days": lookback_days,
@@ -710,7 +746,11 @@ def run_optionable_weekly_scan(universe, lookback_days=5, top_n=10, max_seconds=
         "timed_out": timed_out,
         "universe_size": len(universe),
         "scanned": scanned,
+        "scanned_this_run": scanned,
+        "covered_count": covered_count,
+        "next_index": next_index,
         "rows": rows[:top_n],
+        "rows_cache": rows,
         "error_count": len(errors),
         "error_samples": errors[:5],
     }
@@ -1860,10 +1900,13 @@ def movers_agent():
                     lookback_days=lookback_days,
                     top_n=top_n,
                     max_seconds=max_seconds,
+                    previous=snapshot,
                 )
                 save_movers_snapshot(snapshot)
                 rows_count = len(snapshot.get("rows") or [])
-                info = f"Weekly scan completed. Returned {rows_count} symbols."
+                covered = int(snapshot.get("covered_count", 0))
+                total = int(snapshot.get("universe_size", 0))
+                info = f"Weekly scan completed. Returned {rows_count} symbols. Coverage {covered}/{total}."
             except Exception as exc:
                 error = str(exc)
         elif action == "add_selected":
