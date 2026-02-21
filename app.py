@@ -1909,6 +1909,14 @@ def movers_agent():
                 info = f"Weekly scan completed. Returned {rows_count} symbols. Coverage {covered}/{total}."
             except Exception as exc:
                 error = str(exc)
+        elif action == "clear_snapshot":
+            try:
+                if os.path.exists(MOVERS_SNAPSHOT_PATH):
+                    os.remove(MOVERS_SNAPSHOT_PATH)
+                snapshot = None
+                info = "Movers snapshot cleared."
+            except Exception as exc:
+                error = str(exc)
         elif action == "add_selected":
             selected = [s.upper().strip() for s in request.form.getlist("symbols") if s.strip()]
             if not selected:
