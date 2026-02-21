@@ -84,5 +84,7 @@
   {"symbol": "XLE", "name": "Energy Select Sector SPDR"},
   {"symbol": "XLK", "name": "Technology Select Sector SPDR"},
   {"symbol": "ARKK", "name": "ARK Innovation ETF"},
-  {"symbol": "TLT", "name": "iShares 20+ Year Treasury Bond ETF"}
+  {"symbol": "TLT", "name": "iShares 20+ Year Treasury Bond ETF"},
+  {"symbol": "ROK", "name": "ROkU"},
+  {"symbol": "SNOW", "name": "Snowflake"}
 ]
