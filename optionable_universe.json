@@ -92,5 +92,10 @@
   {"symbol": "AZO", "name": "AutoZone"},
   {"symbol": "WDC", "name": "Western Digital"},
   {"symbol": "FIX", "name": "Comfort Systems USA"},
-  {"symbol": "SNDK", "name": "Sandisk Corp"}
+  {"symbol": "SNDK","name": "Sandisk Corp"},
+  {"symbol": "VZ",  "name": "Verizon"},
+  {"symbol": "VLO", "name": "Valero Energy"},
+  {"symbol": "UHS", "name": "Universal Health Services"},
+  {"symbol": "UNH", "name": "UnitedHealth Group"},
+  {"symbol": "TSCO","name": "Tractor Supply"}
 ]
