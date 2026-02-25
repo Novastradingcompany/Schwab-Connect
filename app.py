@@ -64,6 +64,11 @@ _CHAIN_CACHE_TTL = 60
 _CHAIN_ERROR = {}
 _OPTIONABLE_CACHE = {}
 _OPTIONABLE_CACHE_TTL = 86400
+_ACCOUNT_HASH_CACHE = {"ts": 0.0, "value": {}}
+_ACCOUNT_HASH_CACHE_TTL = 900
+_TRANSACTIONS_CACHE = {"ts": 0.0, "value": []}
+_TRANSACTIONS_CACHE_TTL = 900
+_TRANSACTIONS_FETCH_BUDGET_SEC = 8
 NOVA_MODEL_OPTIONS = [
     "gpt-4o",
     "gpt-4.1",
@@ -1583,38 +1588,69 @@ def build_option_open_rows(positions, quotes, underlying_quotes, step, span):
 
 
 def get_account_hashes():
+    now = time.time()
+    cached = _ACCOUNT_HASH_CACHE.get("value", {})
+    if cached and (now - _ACCOUNT_HASH_CACHE.get("ts", 0.0)) <= _ACCOUNT_HASH_CACHE_TTL:
+        return cached
+
     client = get_client()
     response = schwab_request(lambda: client.get_account_numbers(), "get_account_numbers")
     response.raise_for_status()
     data = response.json()
-    return {row.get("accountNumber"): row.get("hashValue") for row in data}
+    hashes = {row.get("accountNumber"): row.get("hashValue") for row in data}
+    _ACCOUNT_HASH_CACHE["ts"] = now
+    _ACCOUNT_HASH_CACHE["value"] = hashes
+    return hashes
 
 
 def fetch_transactions_one_year():
+    now = time.time()
+    cached = _TRANSACTIONS_CACHE.get("value", [])
+    if cached and (now - _TRANSACTIONS_CACHE.get("ts", 0.0)) <= _TRANSACTIONS_CACHE_TTL:
+        return cached
+
     client = get_client()
     end_date = dt.datetime.now(dt.timezone.utc)
     start_date = end_date - dt.timedelta(days=365)
     account_hashes = get_account_hashes()
     all_txns = []
+    deadline = time.monotonic() + _TRANSACTIONS_FETCH_BUDGET_SEC
+
     for acct_num, acct_hash in account_hashes.items():
+        if time.monotonic() >= deadline:
+            break
         window_start = start_date
         while window_start < end_date:
+            if time.monotonic() >= deadline:
+                break
             window_end = min(window_start + dt.timedelta(days=59), end_date)
-            response = schwab_request(
-                lambda: client.get_transactions(
-                    acct_hash,
-                    start_date=window_start,
-                    end_date=window_end,
-                ),
-                "get_transactions",
-            )
-            response.raise_for_status()
-            data = response.json()
-            if isinstance(data, list):
-                for txn in data:
-                    txn["accountNumber"] = acct_num
-                all_txns.extend(data)
+            try:
+                response = schwab_request(
+                    lambda: client.get_transactions(
+                        acct_hash,
+                        start_date=window_start,
+                        end_date=window_end,
+                    ),
+                    "get_transactions",
+                )
+                response.raise_for_status()
+                data = response.json()
+                if isinstance(data, list):
+                    for txn in data:
+                        txn["accountNumber"] = acct_num
+                    all_txns.extend(data)
+            except Exception as exc:
+                log_error(exc, context="fetch_transactions_one_year")
+                if cached:
+                    return cached
+                break
             window_start = window_end + dt.timedelta(seconds=1)
+
+    if all_txns:
+        _TRANSACTIONS_CACHE["ts"] = now
+        _TRANSACTIONS_CACHE["value"] = all_txns
+    elif cached:
+        return cached
     return all_txns
 
 
