@@ -97,5 +97,8 @@
   {"symbol": "VLO", "name": "Valero Energy"},
   {"symbol": "UHS", "name": "Universal Health Services"},
   {"symbol": "UNH", "name": "UnitedHealth Group"},
-  {"symbol": "TSCO","name": "Tractor Supply"}
+  {"symbol": "TSCO","name": "Tractor Supply"},
+  {"symbol": "MRVL","name": "Marvell Technology"},
+  {"symbol": "TSM", "name": "TAIWAN SEMICONDUCTOR"},
+  {"symbol": "MU",  "name": "Micron Technology"}
 ]
