@@ -921,11 +921,31 @@ def clean_chain(df: pd.DataFrame) -> pd.DataFrame:
 def parse_expiration(exp_str):
     if not exp_str:
         return None
-    exp_str = str(exp_str)[:10]
+    text = str(exp_str).strip()
+    if not text:
+        return None
+    exp_str = text[:10]
     try:
         return dt.datetime.strptime(exp_str, "%Y-%m-%d").date()
     except ValueError:
-        return None
+        pass
+    # Some payloads provide compact YYYYMMDD.
+    compact = re.sub(r"\D", "", text)
+    if len(compact) == 8:
+        try:
+            return dt.datetime.strptime(compact, "%Y%m%d").date()
+        except ValueError:
+            pass
+    # Some payloads provide Unix timestamps (seconds or milliseconds).
+    if compact.isdigit() and len(compact) in (10, 13):
+        try:
+            ts = int(compact)
+            if len(compact) == 13:
+                ts = ts / 1000.0
+            return dt.datetime.fromtimestamp(ts, tz=dt.timezone.utc).date()
+        except (ValueError, OverflowError, OSError):
+            pass
+    return None
 
 
 def parse_option_symbol(symbol):
@@ -937,9 +957,15 @@ def parse_option_symbol(symbol):
     match = re.match(r"^([A-Z]{1,6})(\d{6})([CP])(\d{8})$", compact)
     if not match:
         return {}
-    underlying, _expiry, cp_flag, strike_raw = match.groups()
+    underlying, expiry_raw, cp_flag, strike_raw = match.groups()
+    expiry = None
+    try:
+        expiry = dt.datetime.strptime(expiry_raw, "%y%m%d").date()
+    except ValueError:
+        expiry = None
     return {
         "underlying": underlying,
+        "expiry": expiry,
         "type": "CALL" if cp_flag == "C" else "PUT",
         "strike": int(strike_raw) / 1000.0,
     }
@@ -990,6 +1016,9 @@ def fetch_positions():
                     pnl_pct = (pnl / abs(cost_basis)) * 100
 
             expiration = parse_expiration(instrument.get("expirationDate") or instrument.get("maturityDate"))
+            if expiration is None and asset_type == "OPTION":
+                parsed_option = parse_option_symbol(symbol)
+                expiration = parsed_option.get("expiry")
             dte = None
             if expiration:
                 dte = (expiration - dt.date.today()).days
