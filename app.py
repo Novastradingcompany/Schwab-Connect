@@ -1155,6 +1155,28 @@ def send_email_alerts(alerts):
     save_alert_state(state)
 
 
+def send_test_email_alert():
+    settings = email_settings()
+    if settings is None:
+        raise RuntimeError("Email alerts are not configured. Missing SMTP_* or ALERT_EMAIL_* env vars.")
+
+    now = dt.datetime.now(ZoneInfo(load_settings().get("timezone", "UTC"))).isoformat(timespec="seconds")
+    msg = EmailMessage()
+    msg["Subject"] = "Nova Alert Test"
+    msg["From"] = settings["from_addr"]
+    msg["To"] = settings["to_addr"]
+    msg.set_content(
+        "This is a Nova test email.\n"
+        f"Sent at: {now}\n"
+        "If you received this message, alert delivery is working."
+    )
+
+    with smtplib.SMTP(settings["host"], settings["port"]) as server:
+        server.starttls()
+        server.login(settings["user"], settings["password"])
+        server.send_message(msg)
+
+
 def monitor_loop():
     while True:
         settings = load_settings()
@@ -2223,6 +2245,7 @@ def tools():
     errors = load_error_log()
     status = None
     refresh_result = None
+    email_test_result = None
     settings = load_settings()
     tz = request.args.get("tz")
     if tz:
@@ -2249,6 +2272,12 @@ def tools():
             status = {"ok": True, "status_code": response.status_code}
         except Exception as exc:
             status = {"ok": False, "error": str(exc)}
+    if request.args.get("send_test_email") == "1":
+        try:
+            send_test_email_alert()
+            email_test_result = {"ok": True}
+        except Exception as exc:
+            email_test_result = {"ok": False, "error": str(exc)}
 
     tzinfo = ZoneInfo(settings.get("timezone", "UTC"))
     now = dt.datetime.now(tzinfo)
@@ -2282,6 +2311,7 @@ def tools():
         errors=errors,
         status=status,
         refresh_result=refresh_result,
+        email_test_result=email_test_result,
         token_status=token_status,
         monitor_status=monitor_status,
         monitor_thread_alive=thread_alive,

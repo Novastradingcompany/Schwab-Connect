@@ -75,6 +75,7 @@
       <div class="details-body">
         <a class="button" href="{{ url_for('tools', refresh_token=1) }}">Refresh Schwab Token</a>
         <a class="button" href="{{ url_for('tools', check_schwab=1) }}">Run Status Check</a>
+        <a class="button" href="{{ url_for('tools', send_test_email=1) }}">Send Test Email</a>
         {% if token_status %}
           <div>Token expires in: {{ (token_status.seconds_left // 3600) }}h</div>
         {% endif %}
@@ -90,6 +91,13 @@
             <div>OK (HTTP {{ status.status_code }})</div>
           {% else %}
             <div>Error: {{ status.error }}</div>
+          {% endif %}
+        {% endif %}
+        {% if email_test_result %}
+          {% if email_test_result.ok %}
+            <div class="pl-pos">Test email sent.</div>
+          {% else %}
+            <div class="pl-neg">Test email failed: {{ email_test_result.error }}</div>
           {% endif %}
         {% endif %}
       </div>
