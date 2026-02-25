@@ -47,6 +47,16 @@
 
   <section class="card">
     <div class="card-title">Summary</div>
+    {% if status != "open" %}
+      <p class="subtitle">
+        Last updated:
+        {% if summary_last_updated %}
+          {{ summary_last_updated }}{% if summary_last_updated_ago %} ({{ summary_last_updated_ago }}){% endif %}
+        {% else %}
+          Not available yet
+        {% endif %}
+      </p>
+    {% endif %}
     <div class="table-wrap">
       <table>
         <thead>

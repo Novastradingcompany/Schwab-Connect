@@ -2210,12 +2210,32 @@ def summary():
     tz = request.args.get("tz")
     error = None
     rows = []
+    summary_last_updated = None
+    summary_last_updated_ago = None
     try:
+        settings = load_settings()
         if tz:
-            settings = load_settings()
             settings["timezone"] = tz
             save_settings(settings)
+
         rows = build_yearly_summary(period, status_filter)
+        cache_ts = _TRANSACTIONS_CACHE.get("ts", 0.0)
+        if cache_ts:
+            tz_name = settings.get("timezone", "America/New_York")
+            try:
+                tzinfo = ZoneInfo(tz_name)
+            except Exception:
+                tzinfo = dt.timezone.utc
+            cache_dt = dt.datetime.fromtimestamp(cache_ts, tz=dt.timezone.utc).astimezone(tzinfo)
+            summary_last_updated = cache_dt.strftime("%Y-%m-%d %I:%M:%S %p %Z")
+            age_seconds = max(0, int(time.time() - cache_ts))
+            if age_seconds < 60:
+                summary_last_updated_ago = "just now"
+            elif age_seconds < 3600:
+                summary_last_updated_ago = f"{age_seconds // 60}m ago"
+            else:
+                summary_last_updated_ago = f"{age_seconds // 3600}h ago"
+
         if sort_by == "loss":
             rows = sorted(rows, key=lambda r: r["pnl"])
         elif sort_by == "symbol":
@@ -2232,6 +2252,8 @@ def summary():
         period=period,
         status=status_filter,
         sort_by=sort_by,
+        summary_last_updated=summary_last_updated,
+        summary_last_updated_ago=summary_last_updated_ago,
     )
 
 
