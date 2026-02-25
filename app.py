@@ -43,6 +43,7 @@ ALERTS_STATE_PATH = "alerts_state.json"
 ALERTS = []
 _ALERTS_LOCK = threading.Lock()
 _MONITOR_THREAD = None
+_MONITOR_LOCK = threading.Lock()
 NOVA_OPTIONS_RESPONSE = None
 NOVA_OPTIONS_ERROR = None
 WATCHLIST_PATH = "watchlist.json"
@@ -68,6 +69,29 @@ NOVA_MODEL_OPTIONS = [
     "gpt-4.1",
     "gpt-4o-mini",
 ]
+
+
+def monitor_enabled():
+    return os.getenv("NOVA_MONITOR_ENABLED", "1").strip().lower() not in {"0", "false", "off", "no"}
+
+
+def ensure_monitor_thread():
+    global _MONITOR_THREAD
+    if not monitor_enabled():
+        return False
+    if _MONITOR_THREAD and _MONITOR_THREAD.is_alive():
+        return True
+    with _MONITOR_LOCK:
+        if _MONITOR_THREAD and _MONITOR_THREAD.is_alive():
+            return True
+        _MONITOR_THREAD = threading.Thread(
+            target=monitor_loop,
+            name="nova-monitor",
+            daemon=True,
+        )
+        _MONITOR_THREAD.start()
+        logging.info("Started monitor thread.")
+        return True
 
 
 def _get_env(key):
@@ -162,6 +186,12 @@ def login_required(view):
 
 @app.before_request
 def require_login():
+    try:
+        ensure_monitor_thread()
+    except Exception as exc:
+        logging.warning("Failed to start monitor thread: %s", exc)
+        log_error(exc, context="ensure_monitor_thread")
+
     # These are endpoint names, NOT URL paths
     if request.endpoint in {"login", "logout", "static", "callback"}:
         return None
@@ -2198,6 +2228,7 @@ def tools():
     if tz:
         settings["timezone"] = tz
         save_settings(settings)
+    ensure_monitor_thread()
     token_status = get_token_status()
     if request.args.get("clear_errors") == "1":
         save_monitor_state(state)
@@ -2218,6 +2249,33 @@ def tools():
             status = {"ok": True, "status_code": response.status_code}
         except Exception as exc:
             status = {"ok": False, "error": str(exc)}
+
+    tzinfo = ZoneInfo(settings.get("timezone", "UTC"))
+    now = dt.datetime.now(tzinfo)
+    polling_minutes = max(1, int(settings.get("polling_minutes", 60)))
+    stale_seconds = (polling_minutes * 60) + 120
+
+    def _coerce_tz(value):
+        if not value:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=tzinfo)
+        return value.astimezone(tzinfo)
+
+    paused_until = _coerce_tz(_parse_iso_dt(state.get("paused_until")))
+    last_run = _coerce_tz(_parse_iso_dt(state.get("last_monitor_run")))
+    thread_alive = bool(_MONITOR_THREAD and _MONITOR_THREAD.is_alive())
+    monitor_status = "stopped"
+    if paused_until and paused_until > now:
+        monitor_status = "paused"
+    elif thread_alive:
+        if last_run and (now - last_run).total_seconds() <= stale_seconds:
+            monitor_status = "running"
+        elif last_run:
+            monitor_status = "stale"
+        else:
+            monitor_status = "starting"
+
     return render_template(
         "tools.html",
         state=state,
@@ -2225,6 +2283,10 @@ def tools():
         status=status,
         refresh_result=refresh_result,
         token_status=token_status,
+        monitor_status=monitor_status,
+        monitor_thread_alive=thread_alive,
+        monitor_enabled=monitor_enabled(),
+        polling_minutes=polling_minutes,
         timezone=settings.get("timezone", "UTC"),
     )
 

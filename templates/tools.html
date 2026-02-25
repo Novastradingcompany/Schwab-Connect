@@ -12,6 +12,23 @@
     <details open>
       <summary>Monitor Status</summary>
       <div class="details-body">
+        <div>
+          Worker status:
+          {% if monitor_status == "running" %}
+            <span class="pl-pos">RUNNING</span>
+          {% elif monitor_status == "paused" %}
+            <span class="pl-flat">PAUSED (schedule/fail-safe)</span>
+          {% elif monitor_status == "stale" %}
+            <span class="pl-neg">STALE (not updating on time)</span>
+          {% elif monitor_status == "starting" %}
+            <span class="pl-flat">STARTING</span>
+          {% else %}
+            <span class="pl-neg">STOPPED</span>
+          {% endif %}
+        </div>
+        <div>Monitor enabled: {{ "yes" if monitor_enabled else "no (NOVA_MONITOR_ENABLED=0)" }}</div>
+        <div>Thread alive: {{ "yes" if monitor_thread_alive else "no" }}</div>
+        <div>Polling interval: {{ polling_minutes }} minute(s)</div>
         <div>Last monitor run: {{ state.last_monitor_run or "n/a" }}</div>
         <div>Last alert count: {{ state.last_alert_count or 0 }}</div>
         <div>Last email sent: {{ state.last_email_sent or "n/a" }}</div>
