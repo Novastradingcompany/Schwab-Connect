@@ -1493,7 +1493,11 @@ def build_option_open_rows(positions, quotes, underlying_quotes, step, span):
 
         opt_quote = quotes.get(symbol, {})
         mark = opt_quote.get("mark") or opt_quote.get("last") or opt_quote.get("bid") or opt_quote.get("ask") or 0.0
-        current_pl = (mark * qty * 100) - cost_basis
+        current_value = mark * qty * 100
+        current_pl = current_value - cost_basis
+        pl_pct = None
+        if cost_basis:
+            pl_pct = (current_pl / abs(cost_basis)) * 100
 
         breakeven = strike + avg_price if opt_type == "CALL" else strike - avg_price
         under_quote = underlying_quotes.get(underlying, {})
@@ -1511,9 +1515,13 @@ def build_option_open_rows(positions, quotes, underlying_quotes, step, span):
             "type": opt_type,
             "strike": strike,
             "qty": qty,
+            "side": "LONG" if qty >= 0 else "SHORT",
             "avg_price": avg_price,
             "mark": mark,
+            "cost_basis": round(cost_basis, 2),
+            "current_value": round(current_value, 2),
             "current_pl": round(current_pl, 2),
+            "pl_pct": round(pl_pct, 2) if pl_pct is not None else None,
             "breakeven": round(breakeven, 2),
             "underlying_last": underlying_last,
             "pl_levels": pl_levels,

@@ -37,12 +37,16 @@
             <th>Symbol</th>
             <th>Underlying</th>
             <th>Type</th>
+            <th>Side</th>
             <th>Strike</th>
             <th>Qty</th>
             <th>Avg Price</th>
             <th>Mark</th>
-            <th>Underlying</th>
-            <th>Current P/L</th>
+            <th>Cost Basis</th>
+            <th>Current Value</th>
+            <th>Underlying Last</th>
+            <th>Unrealized P/L</th>
+            <th>P/L %</th>
             <th>Breakeven</th>
             {% for lvl in levels %}
               <th>BE {{ "%+.2f"|format(lvl) }}</th>
@@ -51,23 +55,40 @@
         </thead>
         <tbody>
           {% for row in rows %}
-            <tr>
+            <tr class="{% if row.current_pl > 0 %}row-pl-pos{% elif row.current_pl < 0 %}row-pl-neg{% else %}row-pl-flat{% endif %}">
               <td>{{ row.symbol }}</td>
               <td>{{ row.underlying }}</td>
               <td>{{ row.type }}</td>
+              <td>{{ row.side }}</td>
               <td>{{ row.strike }}</td>
               <td>{{ row.qty }}</td>
-              <td>{{ row.avg_price }}</td>
-              <td>{{ row.mark }}</td>
-              <td>{{ row.underlying_last }}</td>
-              <td>{{ row.current_pl }}</td>
-              <td>{{ row.breakeven }}</td>
+              <td>${{ "%.2f"|format(row.avg_price) }}</td>
+              <td>${{ "%.2f"|format(row.mark) }}</td>
+              <td>${{ "%.2f"|format(row.cost_basis) }}</td>
+              <td>${{ "%.2f"|format(row.current_value) }}</td>
+              <td>
+                {% if row.underlying_last is not none %}
+                  ${{ "%.2f"|format(row.underlying_last) }}
+                {% endif %}
+              </td>
+              <td class="{% if row.current_pl > 0 %}pl-pos{% elif row.current_pl < 0 %}pl-neg{% else %}pl-flat{% endif %}">
+                ${{ "%.2f"|format(row.current_pl) }}
+              </td>
+              <td class="{% if row.pl_pct is not none and row.pl_pct > 0 %}pl-pos{% elif row.pl_pct is not none and row.pl_pct < 0 %}pl-neg{% else %}pl-flat{% endif %}">
+                {% if row.pl_pct is not none %}
+                  {{ "%.2f"|format(row.pl_pct) }}%
+                {% endif %}
+              </td>
+              <td>${{ "%.2f"|format(row.breakeven) }}</td>
               {% for lvl in levels %}
-                <td>{{ row.pl_levels.get(lvl) }}</td>
+                {% set lvl_pl = row.pl_levels.get(lvl) %}
+                <td class="{% if lvl_pl > 0 %}pl-pos{% elif lvl_pl < 0 %}pl-neg{% else %}pl-flat{% endif %}">
+                  ${{ "%.2f"|format(lvl_pl) }}
+                </td>
               {% endfor %}
             </tr>
           {% else %}
-            <tr><td colspan="{{ 10 + levels|length }}">No option positions found.</td></tr>
+            <tr><td colspan="{{ 15 + levels|length }}">No option positions found.</td></tr>
           {% endfor %}
         </tbody>
       </table>

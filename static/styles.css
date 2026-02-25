@@ -419,3 +419,29 @@ th.sortable[data-sort-dir="desc"]::after {
     align-items: flex-start;
   }
 }
+
+.pl-pos {
+  color: #0f7a2f;
+  font-weight: 600;
+}
+
+.pl-neg {
+  color: #b42318;
+  font-weight: 600;
+}
+
+.pl-flat {
+  color: var(--ink-soft);
+}
+
+.row-pl-pos {
+  background: rgba(15, 122, 47, 0.05);
+}
+
+.row-pl-neg {
+  background: rgba(180, 35, 24, 0.05);
+}
+
+.row-pl-flat {
+  background: transparent;
+}
