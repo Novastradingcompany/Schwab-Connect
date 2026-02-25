@@ -893,6 +893,23 @@ def parse_expiration(exp_str):
         return None
 
 
+def parse_option_symbol(symbol):
+    # Accepts common OCC-style strings, with or without spaces.
+    text = (symbol or "").strip().upper()
+    if not text:
+        return {}
+    compact = re.sub(r"\s+", "", text)
+    match = re.match(r"^([A-Z]{1,6})(\d{6})([CP])(\d{8})$", compact)
+    if not match:
+        return {}
+    underlying, _expiry, cp_flag, strike_raw = match.groups()
+    return {
+        "underlying": underlying,
+        "type": "CALL" if cp_flag == "C" else "PUT",
+        "strike": int(strike_raw) / 1000.0,
+    }
+
+
 def fetch_positions():
     client = get_client()
     response = schwab_request(lambda: client.get_accounts(fields=["positions"]), "get_accounts_positions")
@@ -1455,9 +1472,13 @@ def build_option_open_rows(positions, quotes, underlying_quotes, step, span):
         if pos.get("assetType") != "OPTION":
             continue
         instrument = pos.get("instrument", {})
-        opt_type = instrument.get("putCall") or instrument.get("optionType") or ""
+        symbol = pos.get("symbol")
+        symbol_meta = parse_option_symbol(symbol)
+        opt_type = (instrument.get("putCall") or instrument.get("optionType") or symbol_meta.get("type") or "").upper()
         strike = _safe_float(instrument.get("strikePrice"))
-        underlying = instrument.get("underlyingSymbol")
+        if strike is None:
+            strike = _safe_float(symbol_meta.get("strike"))
+        underlying = instrument.get("underlyingSymbol") or symbol_meta.get("underlying")
         if strike is None or not underlying:
             continue
 
@@ -1470,7 +1491,7 @@ def build_option_open_rows(positions, quotes, underlying_quotes, step, span):
         qty = _safe_float(pos.get("qty")) or 0.0
         cost_basis = avg_price * qty * 100
 
-        opt_quote = quotes.get(pos.get("symbol"), {})
+        opt_quote = quotes.get(symbol, {})
         mark = opt_quote.get("mark") or opt_quote.get("last") or opt_quote.get("bid") or opt_quote.get("ask") or 0.0
         current_pl = (mark * qty * 100) - cost_basis
 
@@ -1485,7 +1506,7 @@ def build_option_open_rows(positions, quotes, underlying_quotes, step, span):
             pl_levels[delta] = round((intrinsic * qty * 100) - cost_basis, 2)
 
         rows.append({
-            "symbol": pos.get("symbol"),
+            "symbol": symbol,
             "underlying": underlying,
             "type": opt_type,
             "strike": strike,
@@ -2059,9 +2080,15 @@ def options_open():
         option_positions = [p for p in positions if p.get("assetType") == "OPTION"]
         option_symbols = sorted({p.get("symbol") for p in option_positions if p.get("symbol")})
         underlying_symbols = sorted({
-            (p.get("instrument", {}) or {}).get("underlyingSymbol")
+            (
+                (p.get("instrument", {}) or {}).get("underlyingSymbol")
+                or parse_option_symbol(p.get("symbol")).get("underlying")
+            )
             for p in option_positions
-            if (p.get("instrument", {}) or {}).get("underlyingSymbol")
+            if (
+                (p.get("instrument", {}) or {}).get("underlyingSymbol")
+                or parse_option_symbol(p.get("symbol")).get("underlying")
+            )
         })
         quotes = fetch_quotes(option_symbols)
         underlying_quotes = fetch_quotes(underlying_symbols)
