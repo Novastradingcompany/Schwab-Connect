@@ -826,6 +826,43 @@ def save_tickets(data):
         json.dump(data, f, indent=2)
 
 
+def _parse_token_payload(raw):
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    token = payload.get("token", payload)
+    if not isinstance(token, dict) or not token.get("refresh_token"):
+        return None
+    expires_at = token.get("expires_at") or payload.get("expires_at") or 0
+    creation_ts = payload.get("creation_timestamp") or 0
+    try:
+        expires_at = int(expires_at) if expires_at else 0
+    except Exception:
+        expires_at = 0
+    try:
+        creation_ts = int(creation_ts) if creation_ts else 0
+    except Exception:
+        creation_ts = 0
+    return {
+        "raw": json.dumps(payload, separators=(",", ":"), sort_keys=True),
+        "creation_ts": creation_ts,
+        "expires_at": expires_at,
+    }
+
+
+def _best_token_candidate(candidates):
+    valid = [candidate for candidate in candidates if candidate]
+    if not valid:
+        return None
+    valid.sort(key=lambda item: (item["creation_ts"], item["expires_at"]), reverse=True)
+    return valid[0]
+
+
 def get_client():
     global _CLIENT
     if _CLIENT is None:
@@ -847,15 +884,16 @@ def get_client():
 
 def ensure_token_file():
     token_path = os.getenv("TOKEN_PATH", "token.json")
-
-    # If the token file already exists, use it
+    raw_file = None
     if os.path.exists(token_path):
-        return token_path
+        try:
+            with open(token_path, "r", encoding="utf-8") as f:
+                raw_file = f.read()
+        except Exception:
+            raw_file = None
 
-    # If a token is stored in environment variables, rebuild it
     token_json = os.getenv("TOKEN_JSON")
     token_b64 = os.getenv("TOKEN_JSON_B64")
-
     decoded_b64 = None
     if token_b64:
         try:
@@ -863,36 +901,24 @@ def ensure_token_file():
         except Exception as exc:
             raise RuntimeError(f"Failed to decode TOKEN_JSON_B64: {exc}") from exc
 
-    # If both are provided, prefer the newest token payload
-    if token_json or decoded_b64:
-        candidates = []
-        for raw in (token_json, decoded_b64):
-            if not raw:
-                continue
-            try:
-                payload = json.loads(raw)
-            except Exception:
-                continue
-            token = payload.get("token", payload) if isinstance(payload, dict) else {}
-            expires_at = token.get("expires_at") or payload.get("expires_at") or 0
-            creation_ts = payload.get("creation_timestamp") or 0
-            candidates.append((expires_at, creation_ts, raw))
-        if candidates:
-            candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
-            token_json = candidates[0][2]
+    selected = _best_token_candidate(
+        [
+            _parse_token_payload(raw_file),
+            _parse_token_payload(token_json),
+            _parse_token_payload(decoded_b64),
+        ]
+    )
 
-    if token_json:
+    if selected:
         token_dir = os.path.dirname(token_path)
         if token_dir and not os.path.exists(token_dir):
             os.makedirs(token_dir, exist_ok=True)
         with open(token_path, "w", encoding="utf-8") as f:
-            f.write(token_json)
+            f.write(selected["raw"])
         return token_path
 
-    # No token file and no env token — return None
+    # No token file and no usable env token - return None
     return None
-
-
 
 def get_openai_client():
     global _OPENAI_CLIENT
@@ -2818,3 +2844,4 @@ def options_chain():
       #  ssl_context=("cert.pem", "key.pem"),
        # debug=True
    
+

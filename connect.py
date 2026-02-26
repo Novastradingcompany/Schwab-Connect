@@ -6,6 +6,40 @@ import urllib.parse
 from dotenv import load_dotenv
 from schwab.auth import client_from_token_file, OAuth2Client, __fetch_and_register_token_from_redirect
 
+
+def _extract_code_and_state(user_input):
+    raw = (user_input or "").strip()
+    if not raw:
+        return None, None
+
+    candidates = []
+    if raw.startswith("http://") or raw.startswith("https://"):
+        parsed = urllib.parse.urlparse(raw)
+        candidates.append(parsed.query)
+        candidates.append(parsed.fragment)
+    else:
+        candidates.append(raw)
+        if "?" in raw:
+            candidates.append(raw.split("?", 1)[1])
+        if "#" in raw:
+            candidates.append(raw.split("#", 1)[1])
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        parsed = urllib.parse.parse_qs(candidate, keep_blank_values=True)
+        code = parsed.get("code", [None])[0]
+        state = parsed.get("state", [None])[0]
+        if code:
+            return urllib.parse.unquote(code), state
+
+    # Allow users to paste only the code value (optionally with extra params)
+    code = raw.split("&", 1)[0]
+    if code:
+        return urllib.parse.unquote(code), None
+    return None, None
+
+
 def _summarize_accounts(payload):
     summaries = []
     for entry in payload:
@@ -74,19 +108,14 @@ def main():
     print("**************************************************************\n")
 
     user_input = input("Redirect URL or code> ").strip()
-    if "http://" in user_input or "https://" in user_input:
-        redirected_url = user_input
-    else:
-        # Accept either a raw code or a query string like code=...&state=...
-        parsed = urllib.parse.parse_qs(user_input, keep_blank_values=True)
-        if "code" in parsed:
-            code = parsed.get("code", [user_input])[0]
-        else:
-            # If user pasted "CODE&session=...&state=..." without "code=",
-            # extract everything before the first "&".
-            code = user_input.split("&", 1)[0]
-        redirect_query = urllib.parse.urlencode({"code": code, "state": state})
-        redirected_url = f"{callback_url}?{redirect_query}"
+    code, returned_state = _extract_code_and_state(user_input)
+    if not code:
+        raise RuntimeError(
+            "Could not find an authorization code in your input. Paste the full redirected URL or just the code value."
+        )
+    redirect_state = returned_state or state
+    redirect_query = urllib.parse.urlencode({"code": code, "state": redirect_state})
+    redirected_url = f"{callback_url}?{redirect_query}"
 
     # Best-effort check for expired codes to avoid unnecessary 400s
     try:
