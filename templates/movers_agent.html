@@ -20,6 +20,14 @@
     <div class="card-title">Run Weekly Scan</div>
     <div class="form-grid">
       <label>
+        Universe file
+        <select name="universe_file">
+          {% for f in universe_files %}
+            <option value="{{ f }}" {% if f == selected_universe_file %}selected{% endif %}>{{ f }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
         Lookback (trading days)
         <input type="number" min="1" step="1" name="lookback_days" value="{{ defaults.lookback_days }}">
       </label>
@@ -39,6 +47,7 @@
 
   <form class="card form" method="post">
     <input type="hidden" name="action" value="clear_snapshot">
+    <input type="hidden" name="universe_file" value="{{ selected_universe_file }}">
     <div class="form-actions">
       <button class="button" type="submit">Clear Snapshot</button>
     </div>
@@ -48,6 +57,7 @@
     <section class="card">
       <div class="card-title">Latest Snapshot</div>
       <div class="card-meta">
+        Universe {{ snapshot.universe_file or selected_universe_file }} |
         Ran at {{ snapshot.ran_at }} | scanned this run {{ snapshot.scanned_this_run or snapshot.scanned }}/{{ snapshot.universe_size }} |
         covered {{ snapshot.covered_count or (snapshot.rows|length) }}/{{ snapshot.universe_size }} |
         {% if snapshot.timed_out %}timed out at {{ snapshot.max_seconds }}s{% else %}complete{% endif %}

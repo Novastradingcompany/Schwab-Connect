@@ -631,11 +631,26 @@ def save_watchlist(data):
         json.dump(data, f, indent=2)
 
 
-def load_optionable_universe():
-    if not os.path.exists(OPTIONABLE_UNIVERSE_PATH):
+def list_optionable_universe_files():
+    files = []
+    try:
+        for name in os.listdir("."):
+            lowered = name.lower()
+            if lowered.endswith(".json") and "universe" in lowered:
+                files.append(name)
+    except Exception:
+        files = []
+    if OPTIONABLE_UNIVERSE_PATH not in files and os.path.exists(OPTIONABLE_UNIVERSE_PATH):
+        files.append(OPTIONABLE_UNIVERSE_PATH)
+    return sorted(set(files), key=lambda x: x.lower())
+
+
+def load_optionable_universe(universe_path=None):
+    path = universe_path or OPTIONABLE_UNIVERSE_PATH
+    if not os.path.exists(path):
         return []
     try:
-        with open(OPTIONABLE_UNIVERSE_PATH, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         universe = []
         if not isinstance(data, list):
@@ -2027,7 +2042,19 @@ def movers_agent():
     info = None
     error = None
     snapshot = load_movers_snapshot()
-    universe = load_optionable_universe()
+    universe_files = list_optionable_universe_files()
+    selected_universe_file = (
+        request.values.get("universe_file")
+        or (snapshot or {}).get("universe_file")
+        or OPTIONABLE_UNIVERSE_PATH
+    ).strip()
+    if selected_universe_file not in universe_files:
+        selected_universe_file = (
+            OPTIONABLE_UNIVERSE_PATH
+            if OPTIONABLE_UNIVERSE_PATH in universe_files
+            else (universe_files[0] if universe_files else OPTIONABLE_UNIVERSE_PATH)
+        )
+    universe = load_optionable_universe(selected_universe_file)
     lookback_days = int((snapshot or {}).get("lookback_days", 5))
     top_n = int((snapshot or {}).get("top_n", 10))
     max_seconds = int((snapshot or {}).get("max_seconds", 25))
@@ -2036,18 +2063,26 @@ def movers_agent():
         action = request.form.get("action", "")
         if action == "run_scan":
             try:
+                selected_universe_file = (request.form.get("universe_file") or selected_universe_file).strip()
+                if selected_universe_file not in universe_files:
+                    raise RuntimeError(f"Unknown universe file: {selected_universe_file}")
+                universe = load_optionable_universe(selected_universe_file)
                 lookback_days = max(1, int(request.form.get("lookback_days", 5)))
                 top_n = max(1, int(request.form.get("top_n", 10)))
                 max_seconds = max(10, int(request.form.get("max_seconds", 25)))
                 if not universe:
-                    raise RuntimeError("No optionable universe loaded. Check optionable_universe.json.")
+                    raise RuntimeError(f"No optionable universe loaded from {selected_universe_file}.")
+                previous_snapshot = snapshot
+                if (snapshot or {}).get("universe_file") != selected_universe_file:
+                    previous_snapshot = None
                 snapshot = run_optionable_weekly_scan(
                     universe,
                     lookback_days=lookback_days,
                     top_n=top_n,
                     max_seconds=max_seconds,
-                    previous=snapshot,
+                    previous=previous_snapshot,
                 )
+                snapshot["universe_file"] = selected_universe_file
                 save_movers_snapshot(snapshot)
                 rows_count = len(snapshot.get("rows") or [])
                 covered = int(snapshot.get("covered_count", 0))
@@ -2075,11 +2110,16 @@ def movers_agent():
                 added = len(watchlist_symbols) - before
                 info = f"Added {added} symbol(s) to watchlist."
             snapshot = load_movers_snapshot()
+            selected_universe_file = (snapshot or {}).get("universe_file") or selected_universe_file
+
+    universe = load_optionable_universe(selected_universe_file)
 
     return render_template(
         "movers_agent.html",
         snapshot=snapshot,
         universe_size=len(universe),
+        universe_files=universe_files,
+        selected_universe_file=selected_universe_file,
         info=info,
         error=error,
         defaults={
