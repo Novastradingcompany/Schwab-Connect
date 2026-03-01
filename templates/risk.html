@@ -23,8 +23,16 @@
 
   <section class="cards">
     <div class="card">
-      <div class="card-title">Total Market Value</div>
+      <div class="card-title">Total Account Value</div>
       <div class="metric-value">{{ money(summary.total_mv or 0) }}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Invested Market Value</div>
+      <div class="metric-value">{{ money(summary.invested_mv or 0) }}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Cash &amp; Cash Investments</div>
+      <div class="metric-value">{{ money(summary.cash_total or 0) }}</div>
     </div>
     <div class="card">
       <div class="card-title">Total P/L</div>

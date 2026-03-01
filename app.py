@@ -1538,8 +1538,8 @@ def build_ticket(symbol, strategy, expiry, trade_row):
     return ticket
 
 
-def build_risk_summary(positions):
-    total_mv = 0.0
+def build_risk_summary(positions, cash_total=0.0):
+    invested_mv = 0.0
     total_pnl = 0.0
     by_type = {}
     by_symbol = {}
@@ -1548,7 +1548,7 @@ def build_risk_summary(positions):
     for pos in positions:
         mv = _safe_float(pos.get("marketValue")) or 0.0
         pnl = _safe_float(pos.get("pnl")) or 0.0
-        total_mv += mv
+        invested_mv += mv
         total_pnl += pnl
 
         asset_type = pos.get("assetType") or "UNKNOWN"
@@ -1579,8 +1579,17 @@ def build_risk_summary(positions):
         positions, key=lambda p: abs(_safe_float(p.get("marketValue")) or 0.0), reverse=True
     )[:10]
     symbols_sorted = sorted(by_symbol.values(), key=lambda x: abs(x["marketValue"]), reverse=True)[:10]
+    cash_val = _safe_float(cash_total) or 0.0
+    if cash_val:
+        by_type.setdefault("CASH", {"marketValue": 0.0, "pnl": 0.0, "count": 0})
+        by_type["CASH"]["marketValue"] += cash_val
+        by_type["CASH"]["count"] += 1
+
+    total_mv = invested_mv + cash_val
 
     return {
+        "invested_mv": invested_mv,
+        "cash_total": cash_val,
         "total_mv": total_mv,
         "total_pnl": total_pnl,
         "by_type": by_type,
@@ -1756,14 +1765,30 @@ def _txn_pnl(txn):
     return _safe_float(txn.get("netAmount")) or 0.0
 
 
-def _txn_date(txn):
+def _txn_date(txn, tz_name="America/New_York"):
     raw = txn.get("transactionDate") or txn.get("tradeDate")
     if not raw:
-        return dt.date.today()
+        try:
+            return dt.datetime.now(ZoneInfo(tz_name)).date()
+        except Exception:
+            return dt.date.today()
     try:
-        return dt.datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
+        parsed = dt.datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            try:
+                parsed = parsed.replace(tzinfo=ZoneInfo(tz_name))
+            except Exception:
+                pass
+        try:
+            parsed = parsed.astimezone(ZoneInfo(tz_name))
+        except Exception:
+            pass
+        return parsed.date()
     except Exception:
-        return dt.date.today()
+        try:
+            return dt.datetime.now(ZoneInfo(tz_name)).date()
+        except Exception:
+            return dt.date.today()
 
 
 def _summary_asset_type(raw_asset_type, symbol=None):
@@ -1777,6 +1802,21 @@ def _summary_asset_type(raw_asset_type, symbol=None):
     if asset_text in {"STOCK", "EQUITY_OR_INDEX"}:
         return "STOCK"
     return asset_text or "OTHER"
+
+
+def fetch_account_balance_totals():
+    client = get_client()
+    response = schwab_request(lambda: client.get_accounts(), "get_accounts_balances")
+    response.raise_for_status()
+    data = response.json()
+    totals = {"cash": 0.0, "liquidation": 0.0, "equity": 0.0}
+    for entry in data or []:
+        acct = (entry or {}).get("securitiesAccount", {}) or {}
+        bal = acct.get("currentBalances", {}) or {}
+        totals["cash"] += _safe_float(bal.get("cashBalance")) or 0.0
+        totals["liquidation"] += _safe_float(bal.get("liquidationValue")) or 0.0
+        totals["equity"] += _safe_float(bal.get("equity")) or 0.0
+    return totals
 
 
 def _txn_asset_type(txn):
@@ -1809,9 +1849,12 @@ def bucket_period(date_val, period):
     return str(date_val.year)
 
 
-def build_yearly_summary(period, status_filter):
+def build_yearly_summary(period, status_filter, tz_name="America/New_York"):
     entries = []
-    today = dt.date.today()
+    try:
+        today = dt.datetime.now(ZoneInfo(tz_name)).date()
+    except Exception:
+        today = dt.date.today()
 
     # Open positions (unrealized P/L)
     positions = fetch_positions()
@@ -1845,7 +1888,7 @@ def build_yearly_summary(period, status_filter):
                 "qty": _txn_qty(txn),
                 "pnl": _txn_pnl(txn),
                 "status": "closed",
-                "date": _txn_date(txn),
+                "date": _txn_date(txn, tz_name=tz_name),
             })
 
     # Group by period + symbol
@@ -2306,13 +2349,15 @@ def create_ticket():
 def risk_dashboard():
     error = None
     summary = {}
+    balances = {"cash": 0.0, "liquidation": 0.0, "equity": 0.0}
     try:
         positions = fetch_positions()
-        summary = build_risk_summary(positions)
+        balances = fetch_account_balance_totals()
+        summary = build_risk_summary(positions, cash_total=balances.get("cash", 0.0))
     except Exception as exc:
         error = str(exc)
 
-    return render_template("risk.html", summary=summary, error=error)
+    return render_template("risk.html", summary=summary, balances=balances, error=error)
 
 
 @app.route("/options-open")
@@ -2376,7 +2421,8 @@ def summary():
             settings["timezone"] = tz
             save_settings(settings)
 
-        rows = build_yearly_summary(period, status_filter)
+        tz_name = settings.get("timezone", "America/New_York")
+        rows = build_yearly_summary(period, status_filter, tz_name=tz_name)
         cache_ts = _TRANSACTIONS_CACHE.get("ts", 0.0)
         if cache_ts:
             tz_name = settings.get("timezone", "America/New_York")
@@ -2466,7 +2512,8 @@ def export_tickets():
 def export_summary():
     period = request.args.get("period", "month")
     status_filter = request.args.get("status", "all")
-    rows = build_yearly_summary(period, status_filter)
+    tz_name = load_settings().get("timezone", "America/New_York")
+    rows = build_yearly_summary(period, status_filter, tz_name=tz_name)
     headers = ["period", "symbol", "status", "assetType", "qty", "profit", "loss", "pnl"]
     return _csv_response("summary.csv", rows, headers)
 
