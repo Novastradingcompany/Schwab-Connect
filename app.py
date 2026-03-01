@@ -48,6 +48,7 @@ NOVA_OPTIONS_RESPONSE = None
 NOVA_OPTIONS_ERROR = None
 WATCHLIST_PATH = "watchlist.json"
 TICKETS_PATH = "tickets.json"
+TRADE_JOURNAL_PATH = "trade_journal.json"
 MONITOR_STATE_PATH = "monitor_state.json"
 ERROR_LOG_PATH = "error_log.json"
 SP500_PATH = os.path.join("nova-options-scanner-main", "nova-options-scanner-main", "sp500_symbols.json")
@@ -824,6 +825,130 @@ def load_tickets():
 def save_tickets(data):
     with open(TICKETS_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
+
+
+def load_trade_journal():
+    if not os.path.exists(TRADE_JOURNAL_PATH):
+        save_trade_journal([])
+        return []
+    try:
+        with open(TRADE_JOURNAL_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return data
+        return []
+    except Exception:
+        return []
+
+
+def save_trade_journal(data):
+    with open(TRADE_JOURNAL_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def _parse_date_safe(raw):
+    text = (raw or "").strip()
+    if not text:
+        return None
+    try:
+        return dt.date.fromisoformat(text[:10])
+    except Exception:
+        return None
+
+
+def _trade_gate_result(trade):
+    checks = trade.get("checks", {}) or {}
+    required = {
+        "setup_match": "Setup criteria mismatch",
+        "risk_within_cap": "Max loss exceeds cap",
+        "min_pop_met": "Minimum POP not met",
+        "size_valid": "Position sizing invalid",
+        "no_rule_violation": "Rule violation flagged",
+    }
+    failed = [msg for key, msg in required.items() if not checks.get(key)]
+    return {
+        "passed": len(failed) == 0,
+        "failed_reasons": failed,
+    }
+
+
+def compute_trade_stats(trades):
+    today = dt.date.today()
+    closed_rows = []
+    for t in trades:
+        status = str(t.get("status", "")).lower()
+        expiry = _parse_date_safe(t.get("expiry_date"))
+        exit_date = _parse_date_safe(t.get("exit_date"))
+        realized_pnl = _safe_float(t.get("realized_pnl"))
+        max_loss = _safe_float(t.get("max_loss"))
+        if realized_pnl is None:
+            continue
+        include = status in {"closed", "expired"} or (expiry is not None and expiry <= today)
+        if not include:
+            continue
+        return_pct = None
+        if max_loss and max_loss != 0:
+            return_pct = (realized_pnl / abs(max_loss)) * 100.0
+        closed_rows.append({
+            "id": t.get("id"),
+            "symbol": t.get("symbol"),
+            "strategy": t.get("strategy"),
+            "pnl": realized_pnl,
+            "return_pct": return_pct,
+            "date": exit_date or expiry or _parse_date_safe(t.get("entry_date")) or today,
+        })
+
+    closed_rows.sort(key=lambda x: x["date"])
+    total = len(closed_rows)
+    wins = len([r for r in closed_rows if r["pnl"] > 0])
+    losses = len([r for r in closed_rows if r["pnl"] < 0])
+    net = sum(r["pnl"] for r in closed_rows)
+    avg_return = None
+    return_vals = [r["return_pct"] for r in closed_rows if r["return_pct"] is not None]
+    if return_vals:
+        avg_return = sum(return_vals) / len(return_vals)
+
+    equity = 0.0
+    peak = 0.0
+    max_drawdown = 0.0
+    monthly = {}
+    for r in closed_rows:
+        equity += r["pnl"]
+        peak = max(peak, equity)
+        dd = peak - equity
+        if dd > max_drawdown:
+            max_drawdown = dd
+        month_key = r["date"].strftime("%Y-%m")
+        if month_key not in monthly:
+            monthly[month_key] = {"month": month_key, "count": 0, "pnl": 0.0}
+        monthly[month_key]["count"] += 1
+        monthly[month_key]["pnl"] += r["pnl"]
+
+    by_strategy = {}
+    for r in closed_rows:
+        key = r["strategy"] or "UNKNOWN"
+        if key not in by_strategy:
+            by_strategy[key] = {"strategy": key, "count": 0, "wins": 0, "losses": 0, "pnl": 0.0}
+        by_strategy[key]["count"] += 1
+        by_strategy[key]["pnl"] += r["pnl"]
+        if r["pnl"] > 0:
+            by_strategy[key]["wins"] += 1
+        elif r["pnl"] < 0:
+            by_strategy[key]["losses"] += 1
+
+    win_rate = ((wins / total) * 100.0) if total else 0.0
+    return {
+        "total_trades": total,
+        "wins": wins,
+        "losses": losses,
+        "win_rate": win_rate,
+        "net_pnl": net,
+        "avg_return_pct": avg_return,
+        "max_drawdown": max_drawdown,
+        "closed_rows": closed_rows,
+        "by_month": sorted(monthly.values(), key=lambda x: x["month"], reverse=True),
+        "by_strategy": sorted(by_strategy.values(), key=lambda x: x["pnl"], reverse=True),
+    }
 
 
 def _parse_token_payload(raw):
@@ -2380,6 +2505,92 @@ def create_ticket():
         max_loss=max_loss,
         raw="1" if raw_mode else "",
     ))
+
+
+@app.route("/journal", methods=["GET", "POST"])
+def trade_journal():
+    error = None
+    message = None
+    trades = load_trade_journal()
+
+    if request.method == "POST":
+        action = request.form.get("action", "add")
+        try:
+            if action == "delete":
+                trade_id = request.form.get("trade_id", "").strip()
+                trades = [t for t in trades if str(t.get("id")) != trade_id]
+                save_trade_journal(trades)
+                message = "Trade deleted."
+            elif action == "add":
+                symbol = request.form.get("symbol", "").strip().upper()
+                strategy = request.form.get("strategy", "").strip()
+                thesis = request.form.get("thesis", "").strip()
+                status = request.form.get("status", "open").strip().lower()
+                entry_date = request.form.get("entry_date", "").strip()
+                expiry_date = request.form.get("expiry_date", "").strip()
+                exit_date = request.form.get("exit_date", "").strip()
+                max_loss = _safe_float(request.form.get("max_loss"))
+                target = _safe_float(request.form.get("target"))
+                realized_pnl = _safe_float(request.form.get("realized_pnl"))
+                notes = request.form.get("notes", "").strip()
+                outcome = request.form.get("outcome", "").strip()
+
+                checks = {
+                    "setup_match": request.form.get("check_setup_match") == "1",
+                    "risk_within_cap": request.form.get("check_risk_within_cap") == "1",
+                    "min_pop_met": request.form.get("check_min_pop_met") == "1",
+                    "size_valid": request.form.get("check_size_valid") == "1",
+                    "no_rule_violation": request.form.get("check_no_rule_violation") == "1",
+                }
+                trade = {
+                    "id": dt.datetime.now().strftime("%Y%m%d%H%M%S%f"),
+                    "created_at": dt.datetime.now().isoformat(timespec="seconds"),
+                    "symbol": symbol,
+                    "strategy": strategy,
+                    "thesis": thesis,
+                    "status": status,
+                    "entry_date": entry_date,
+                    "expiry_date": expiry_date,
+                    "exit_date": exit_date,
+                    "max_loss": max_loss,
+                    "target": target,
+                    "realized_pnl": realized_pnl,
+                    "outcome": outcome,
+                    "notes": notes,
+                    "checks": checks,
+                }
+                gate = _trade_gate_result(trade)
+                trade["gate_passed"] = gate["passed"]
+                trade["gate_failed_reasons"] = gate["failed_reasons"]
+
+                if not symbol:
+                    raise RuntimeError("Symbol is required.")
+                if max_loss is None:
+                    raise RuntimeError("Max loss is required.")
+                if status == "open" and not gate["passed"]:
+                    raise RuntimeError("Trade blocked by gate: " + "; ".join(gate["failed_reasons"]))
+
+                trades.insert(0, trade)
+                save_trade_journal(trades)
+                message = "Trade logged."
+            else:
+                raise RuntimeError(f"Unsupported action: {action}")
+        except Exception as exc:
+            error = str(exc)
+
+    trades = sorted(
+        trades,
+        key=lambda t: t.get("created_at") or "",
+        reverse=True,
+    )
+    return render_template("trade_journal.html", trades=trades, error=error, message=message)
+
+
+@app.route("/journal/stats")
+def trade_stats():
+    trades = load_trade_journal()
+    stats = compute_trade_stats(trades)
+    return render_template("trade_stats.html", stats=stats)
 
 
 @app.route("/risk")

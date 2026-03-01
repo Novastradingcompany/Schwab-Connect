@@ -1,0 +1,159 @@
+{% extends "layout.html" %}
+{% block content %}
+  {% macro money(val) -%}
+    {%- set n = val|float -%}
+    {%- if n < 0 -%}
+      -${{ "{:,.2f}".format(n|abs) }}
+    {%- else -%}
+      ${{ "{:,.2f}".format(n) }}
+    {%- endif -%}
+  {%- endmacro %}
+
+  <section class="hero">
+    <div>
+      <h1>Trade Journal</h1>
+      <p class="subtitle">Log thesis, risk, outcomes, and enforce a setup gate.</p>
+    </div>
+    <div class="pill">Repeatability</div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+  {% if message %}
+    <div class="card">{{ message }}</div>
+  {% endif %}
+
+  <form class="card form" method="post">
+    <div class="card-title">Log Trade</div>
+    <input type="hidden" name="action" value="add">
+    <div class="form-grid">
+      <label>
+        Symbol
+        <input type="text" name="symbol" placeholder="SPY" required>
+      </label>
+      <label>
+        Strategy
+        <input type="text" name="strategy" placeholder="bull_put" required>
+      </label>
+      <label>
+        Status
+        <select name="status">
+          <option value="open">Open</option>
+          <option value="closed">Closed</option>
+          <option value="expired">Expired</option>
+        </select>
+      </label>
+      <label>
+        Entry Date
+        <input type="date" name="entry_date">
+      </label>
+      <label>
+        Expiry Date
+        <input type="date" name="expiry_date">
+      </label>
+      <label>
+        Exit Date
+        <input type="date" name="exit_date">
+      </label>
+      <label>
+        Max Loss ($)
+        <input type="number" step="0.01" name="max_loss" required>
+      </label>
+      <label>
+        Target Profit ($)
+        <input type="number" step="0.01" name="target">
+      </label>
+      <label>
+        Realized P/L ($)
+        <input type="number" step="0.01" name="realized_pnl">
+      </label>
+      <label>
+        Outcome
+        <input type="text" name="outcome" placeholder="expired worthless, target hit, stopped">
+      </label>
+      <label>
+        Thesis
+        <input type="text" name="thesis" placeholder="Why this trade had edge" required>
+      </label>
+      <label>
+        Notes
+        <input type="text" name="notes" placeholder="What to improve next time">
+      </label>
+    </div>
+
+    <div class="card-title">Entry Gate Checklist (required for open trades)</div>
+    <div class="form-grid">
+      <label><input type="checkbox" name="check_setup_match" value="1"> Setup matches proven criteria</label>
+      <label><input type="checkbox" name="check_risk_within_cap" value="1"> Max loss within cap</label>
+      <label><input type="checkbox" name="check_min_pop_met" value="1"> POP / quality threshold met</label>
+      <label><input type="checkbox" name="check_size_valid" value="1"> Position size valid</label>
+      <label><input type="checkbox" name="check_no_rule_violation" value="1"> No rule violations</label>
+    </div>
+    <div class="form-actions">
+      <button class="button" type="submit">Save Trade</button>
+      <a class="button" href="{{ url_for('trade_stats') }}">View Stats</a>
+    </div>
+  </form>
+
+  <section class="card">
+    <div class="card-title">Logged Trades</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Created</th>
+            <th>Symbol</th>
+            <th>Strategy</th>
+            <th>Status</th>
+            <th>Entry</th>
+            <th>Expiry</th>
+            <th>Exit</th>
+            <th>Max Loss</th>
+            <th>Realized P/L</th>
+            <th>Gate</th>
+            <th>Thesis</th>
+            <th>Outcome</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in trades %}
+            <tr>
+              <td>{{ t.created_at }}</td>
+              <td>{{ t.symbol }}</td>
+              <td>{{ t.strategy }}</td>
+              <td>{{ t.status }}</td>
+              <td>{{ t.entry_date }}</td>
+              <td>{{ t.expiry_date }}</td>
+              <td>{{ t.exit_date }}</td>
+              <td>{{ money(t.max_loss or 0) }}</td>
+              <td class="{% if (t.realized_pnl or 0) > 0 %}pl-pos{% elif (t.realized_pnl or 0) < 0 %}pl-neg{% endif %}">{{ money(t.realized_pnl or 0) }}</td>
+              <td>
+                {% if t.gate_passed %}
+                  <span class="pl-pos">PASS</span>
+                {% else %}
+                  <span class="pl-neg">FAIL</span>
+                  {% if t.gate_failed_reasons %}
+                    <br>{{ t.gate_failed_reasons|join("; ") }}
+                  {% endif %}
+                {% endif %}
+              </td>
+              <td>{{ t.thesis }}</td>
+              <td>{{ t.outcome }}</td>
+              <td>
+                <form method="post">
+                  <input type="hidden" name="action" value="delete">
+                  <input type="hidden" name="trade_id" value="{{ t.id }}">
+                  <button class="button" type="submit">Delete</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="13">No trades logged yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

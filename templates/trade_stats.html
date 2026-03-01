@@ -1,0 +1,104 @@
+{% extends "layout.html" %}
+{% block content %}
+  {% macro money(val) -%}
+    {%- set n = val|float -%}
+    {%- if n < 0 -%}
+      -${{ "{:,.2f}".format(n|abs) }}
+    {%- else -%}
+      ${{ "{:,.2f}".format(n) }}
+    {%- endif -%}
+  {%- endmacro %}
+
+  <section class="hero">
+    <div>
+      <h1>Trade Stats</h1>
+      <p class="subtitle">Post-expiry performance and repeatability metrics.</p>
+    </div>
+    <div class="pill">Closed Trades</div>
+  </section>
+
+  <section class="cards">
+    <div class="card">
+      <div class="card-title">Closed Trades</div>
+      <div class="metric-value">{{ stats.total_trades or 0 }}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Win Rate</div>
+      <div class="metric-value">{{ "%.1f"|format(stats.win_rate or 0) }}%</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Net P/L</div>
+      <div class="metric-value {% if (stats.net_pnl or 0) > 0 %}pl-pos{% elif (stats.net_pnl or 0) < 0 %}pl-neg{% endif %}">{{ money(stats.net_pnl or 0) }}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Avg Return</div>
+      <div class="metric-value">
+        {% if stats.avg_return_pct is not none %}
+          {{ "%.1f"|format(stats.avg_return_pct) }}%
+        {% else %}
+          N/A
+        {% endif %}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Max Drawdown</div>
+      <div class="metric-value pl-neg">{{ money(stats.max_drawdown or 0) }}</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">By Strategy</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Strategy</th>
+            <th>Trades</th>
+            <th>Wins</th>
+            <th>Losses</th>
+            <th>Net P/L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in stats.by_strategy %}
+            <tr>
+              <td>{{ row.strategy }}</td>
+              <td>{{ row.count }}</td>
+              <td>{{ row.wins }}</td>
+              <td>{{ row.losses }}</td>
+              <td class="{% if row.pnl > 0 %}pl-pos{% elif row.pnl < 0 %}pl-neg{% endif %}">{{ money(row.pnl) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5">No closed-trade data yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">By Month</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th>Trades</th>
+            <th>Net P/L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in stats.by_month %}
+            <tr>
+              <td>{{ row.month }}</td>
+              <td>{{ row.count }}</td>
+              <td class="{% if row.pnl > 0 %}pl-pos{% elif row.pnl < 0 %}pl-neg{% endif %}">{{ money(row.pnl) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="3">No monthly data yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}
