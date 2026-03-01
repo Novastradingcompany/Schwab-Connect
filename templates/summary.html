@@ -164,6 +164,47 @@
     </div>
   </section>
 
+  <section class="card">
+    <div class="card-title">Cash</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Period</th>
+            <th>Symbol</th>
+            <th>Status</th>
+            <th>Cash Balance</th>
+            <th>Profit</th>
+            <th>Loss</th>
+            <th>P/L (Net)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in cash_rows %}
+            <tr>
+              <td>{{ row.period }}</td>
+              <td>{{ row.symbol }}</td>
+              <td>{{ row.status }}</td>
+              <td>{{ money(row.qty) }}</td>
+              <td class="{% if row.profit > 0 %}pl-pos{% endif %}">{{ money(row.profit) }}</td>
+              <td class="{% if row.loss < 0 %}pl-neg{% endif %}">{{ money(row.loss) }}</td>
+              <td class="{% if row.pnl > 0 %}pl-pos{% elif row.pnl < 0 %}pl-neg{% endif %}">{{ money(row.pnl) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="7">No cash data.</td></tr>
+          {% endfor %}
+          <tr>
+            <td colspan="3"><strong>Cash Subtotal</strong></td>
+            <td><strong>{{ money(cash_totals.qty) }}</strong></td>
+            <td class="{% if cash_totals.profit > 0 %}pl-pos{% endif %}"><strong>{{ money(cash_totals.profit) }}</strong></td>
+            <td class="{% if cash_totals.loss < 0 %}pl-neg{% endif %}"><strong>{{ money(cash_totals.loss) }}</strong></td>
+            <td class="{% if cash_totals.pnl > 0 %}pl-pos{% elif cash_totals.pnl < 0 %}pl-neg{% endif %}"><strong>{{ money(cash_totals.pnl) }}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   {% if other_rows %}
     <section class="card">
       <div class="card-title">Other Assets</div>

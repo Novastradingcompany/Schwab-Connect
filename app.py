@@ -1793,6 +1793,8 @@ def _txn_date(txn, tz_name="America/New_York"):
 
 def _summary_asset_type(raw_asset_type, symbol=None):
     asset_text = str(raw_asset_type or "").strip().upper()
+    if "CASH" in asset_text:
+        return "CASH"
     if "OPTION" in asset_text:
         return "OPTION"
     if parse_option_symbol(symbol):
@@ -1889,6 +1891,19 @@ def build_yearly_summary(period, status_filter, tz_name="America/New_York"):
             "assetType": _summary_asset_type(pos.get("assetType"), symbol),
             "qty": _safe_float(pos.get("qty")) or 0.0,
             "pnl": _safe_float(pos.get("pnl")) or 0.0,
+            "status": "open",
+            "date": today,
+        })
+
+    # Cash balance as an open row so yearly summary reflects account cash.
+    if status_filter in ("all", "open"):
+        balances = fetch_account_balance_totals()
+        cash_total = _safe_float(balances.get("cash")) or 0.0
+        entries.append({
+            "symbol": "CASH",
+            "assetType": "CASH",
+            "qty": cash_total,
+            "pnl": 0.0,
             "status": "open",
             "date": today,
         })
@@ -2448,9 +2463,11 @@ def summary():
         {"value": 12, "label": "December"},
     ]
     stock_rows = []
+    cash_rows = []
     option_rows = []
     other_rows = []
     stock_totals = _section_totals([])
+    cash_totals = _section_totals([])
     option_totals = _section_totals([])
     other_totals = _section_totals([])
     combined_totals = _section_totals([])
@@ -2506,13 +2523,15 @@ def summary():
             rows = sorted(rows, key=lambda r: r["pnl"], reverse=True)
 
         stock_rows = [r for r in rows if r.get("assetType") == "STOCK"]
+        cash_rows = [r for r in rows if r.get("assetType") == "CASH"]
         option_rows = [r for r in rows if r.get("assetType") == "OPTION"]
-        other_rows = [r for r in rows if r.get("assetType") not in {"STOCK", "OPTION"}]
+        other_rows = [r for r in rows if r.get("assetType") not in {"STOCK", "OPTION", "CASH"}]
 
         stock_totals = _section_totals(stock_rows)
+        cash_totals = _section_totals(cash_rows)
         option_totals = _section_totals(option_rows)
         other_totals = _section_totals(other_rows)
-        combined_totals = _section_totals(rows)
+        combined_totals = _section_totals([r for r in rows if r.get("assetType") != "CASH"])
     except Exception as exc:
         error = str(exc)
 
@@ -2520,9 +2539,11 @@ def summary():
         "summary.html",
         rows=rows,
         stock_rows=stock_rows,
+        cash_rows=cash_rows,
         option_rows=option_rows,
         other_rows=other_rows,
         stock_totals=stock_totals,
+        cash_totals=cash_totals,
         option_totals=option_totals,
         other_totals=other_totals,
         combined_totals=combined_totals,
