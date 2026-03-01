@@ -20,15 +20,15 @@
         <div class="metrics">
           <div>
             <div class="metric-label">Liquidation</div>
-            <div class="metric-value">${{ "%.2f"|format(acct.liquidationValue or 0) }}</div>
+            <div class="metric-value">${{ "{:,.2f}".format(acct.liquidationValue or 0) }}</div>
           </div>
           <div>
             <div class="metric-label">Cash</div>
-            <div class="metric-value">${{ "%.2f"|format(acct.cashBalance or 0) }}</div>
+            <div class="metric-value">${{ "{:,.2f}".format(acct.cashBalance or 0) }}</div>
           </div>
           <div>
             <div class="metric-label">Equity</div>
-            <div class="metric-value">${{ "%.2f"|format(acct.equity or 0) }}</div>
+            <div class="metric-value">${{ "{:,.2f}".format(acct.equity or 0) }}</div>
           </div>
         </div>
       </div>

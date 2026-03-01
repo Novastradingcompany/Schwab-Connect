@@ -1056,6 +1056,12 @@ def fetch_positions():
                 if cost_basis != 0:
                     pnl_pct = (pnl / abs(cost_basis)) * 100
 
+            # Some equities come through with incomplete basis/price and show N/A in Schwab UI.
+            # Treat those as unknown P/L so totals do not drift from Schwab account-level numbers.
+            if str(asset_type).upper() in {"EQUITY", "ETF", "MUTUAL_FUND", "STOCK"}:
+                if avg_price is None and pnl_pct is None:
+                    pnl = None
+
             expiration = parse_expiration(instrument.get("expirationDate") or instrument.get("maturityDate"))
             if expiration is None and asset_type == "OPTION":
                 parsed_option = parse_option_symbol(symbol)
@@ -1681,7 +1687,8 @@ def fetch_transactions_one_year():
 
     client = get_client()
     end_date = dt.datetime.now(dt.timezone.utc)
-    start_date = end_date - dt.timedelta(days=365)
+    # Yearly Summary should be year-to-date (calendar year), not rolling 365 days.
+    start_date = dt.datetime(end_date.year, 1, 1, tzinfo=dt.timezone.utc)
     account_hashes = get_account_hashes()
     all_txns = []
     deadline = time.monotonic() + _TRANSACTIONS_FETCH_BUDGET_SEC
@@ -1689,11 +1696,12 @@ def fetch_transactions_one_year():
     for acct_num, acct_hash in account_hashes.items():
         if time.monotonic() >= deadline:
             break
-        window_start = start_date
-        while window_start < end_date:
+        # Pull newest-first so timeout budget still returns the most recent activity.
+        window_end = end_date
+        while window_end > start_date:
             if time.monotonic() >= deadline:
                 break
-            window_end = min(window_start + dt.timedelta(days=59), end_date)
+            window_start = max(start_date, window_end - dt.timedelta(days=59))
             try:
                 response = schwab_request(
                     lambda: client.get_transactions(
@@ -1714,7 +1722,7 @@ def fetch_transactions_one_year():
                 if cached:
                     return cached
                 break
-            window_start = window_end + dt.timedelta(seconds=1)
+            window_end = window_start - dt.timedelta(seconds=1)
 
     if all_txns:
         _TRANSACTIONS_CACHE["ts"] = now

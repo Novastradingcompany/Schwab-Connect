@@ -1,5 +1,14 @@
 {% extends "layout.html" %}
 {% block content %}
+  {% macro money(val) -%}
+    {%- set n = val|float -%}
+    {%- if n < 0 -%}
+      -${{ "{:,.2f}".format(n|abs) }}
+    {%- else -%}
+      ${{ "{:,.2f}".format(n) }}
+    {%- endif -%}
+  {%- endmacro %}
+
   <section class="hero">
     <div>
       <h1>Risk Dashboard</h1>
@@ -15,11 +24,11 @@
   <section class="cards">
     <div class="card">
       <div class="card-title">Total Market Value</div>
-      <div class="metric-value">${{ "%.2f"|format(summary.total_mv or 0) }}</div>
+      <div class="metric-value">{{ money(summary.total_mv or 0) }}</div>
     </div>
     <div class="card">
       <div class="card-title">Total P/L</div>
-      <div class="metric-value">${{ "%.2f"|format(summary.total_pnl or 0) }}</div>
+      <div class="metric-value">{{ money(summary.total_pnl or 0) }}</div>
     </div>
     <div class="card">
       <div class="card-title">Options DTE &lt;= 7</div>
@@ -44,8 +53,8 @@
             <tr>
               <td>{{ key }}</td>
               <td>{{ row.count }}</td>
-              <td>{{ row.marketValue }}</td>
-              <td>{{ row.pnl }}</td>
+              <td>{{ money(row.marketValue) }}</td>
+              <td>{{ money(row.pnl) }}</td>
             </tr>
           {% else %}
             <tr><td colspan="4">No data.</td></tr>
@@ -72,8 +81,8 @@
             <tr>
               <td>{{ row.symbol }}</td>
               <td>{{ row.count }}</td>
-              <td>{{ row.marketValue }}</td>
-              <td>{{ row.pnl }}</td>
+              <td>{{ money(row.marketValue) }}</td>
+              <td>{{ money(row.pnl) }}</td>
             </tr>
           {% else %}
             <tr><td colspan="4">No data.</td></tr>
@@ -103,8 +112,8 @@
               <td>{{ row.symbol }}</td>
               <td>{{ row.assetType }}</td>
               <td>{{ row.qty }}</td>
-              <td>{{ row.marketValue }}</td>
-              <td>{{ row.pnl }}</td>
+              <td>{{ money(row.marketValue) }}</td>
+              <td>{{ money(row.pnl) }}</td>
               <td>{{ row.dte }}</td>
             </tr>
           {% else %}
