@@ -1,5 +1,14 @@
 {% extends "layout.html" %}
 {% block content %}
+  {% macro pretty_label(val) -%}
+    {%- set text = (val or '')|string -%}
+    {%- if not text -%}
+      -
+    {%- else -%}
+      {{ text.replace('_', ' ').title() }}
+    {%- endif -%}
+  {%- endmacro %}
+
   {% macro money(val) -%}
     {%- set n = val|float -%}
     {%- if n < 0 -%}
@@ -34,7 +43,16 @@
       </label>
       <label>
         Strategy
-        <input type="text" name="strategy" placeholder="bull_put" required>
+        <select name="strategy" required>
+          <option value="">Select strategy</option>
+          <option value="bull_put">Bull Put</option>
+          <option value="bear_call">Bear Call</option>
+          <option value="iron_condor">Iron Condor</option>
+          <option value="covered_call">Covered Call</option>
+          <option value="cash_secured_put">Cash-Secured Put</option>
+          <option value="long_call">Long Call</option>
+          <option value="long_put">Long Put</option>
+        </select>
       </label>
       <label>
         Status
@@ -70,7 +88,17 @@
       </label>
       <label>
         Outcome
-        <input type="text" name="outcome" placeholder="expired worthless, target hit, stopped">
+        <select name="outcome">
+          <option value="">Select outcome</option>
+          <option value="target_hit">Target Hit</option>
+          <option value="expired_worthless">Expired Worthless</option>
+          <option value="max_loss_hit">Max Loss Hit</option>
+          <option value="stopped_early">Stopped Early</option>
+          <option value="rolled">Rolled</option>
+          <option value="closed_small_profit">Closed Small Profit</option>
+          <option value="closed_small_loss">Closed Small Loss</option>
+          <option value="breakeven">Breakeven</option>
+        </select>
       </label>
       <label>
         Thesis
@@ -122,8 +150,8 @@
             <tr>
               <td>{{ t.created_at }}</td>
               <td>{{ t.symbol }}</td>
-              <td>{{ t.strategy }}</td>
-              <td>{{ t.status }}</td>
+              <td>{{ pretty_label(t.strategy) }}</td>
+              <td>{{ pretty_label(t.status) }}</td>
               <td>{{ t.entry_date }}</td>
               <td>{{ t.expiry_date }}</td>
               <td>{{ t.exit_date }}</td>
@@ -140,7 +168,7 @@
                 {% endif %}
               </td>
               <td>{{ t.thesis }}</td>
-              <td>{{ t.outcome }}</td>
+              <td>{{ pretty_label(t.outcome) }}</td>
               <td>
                 <form method="post">
                   <input type="hidden" name="action" value="delete">

@@ -1,5 +1,14 @@
 {% extends "layout.html" %}
 {% block content %}
+  {% macro pretty_label(val) -%}
+    {%- set text = (val or '')|string -%}
+    {%- if not text -%}
+      -
+    {%- else -%}
+      {{ text.replace('_', ' ').title() }}
+    {%- endif -%}
+  {%- endmacro %}
+
   {% macro money(val) -%}
     {%- set n = val|float -%}
     {%- if n < 0 -%}
@@ -62,7 +71,7 @@
         <tbody>
           {% for row in stats.by_strategy %}
             <tr>
-              <td>{{ row.strategy }}</td>
+              <td>{{ pretty_label(row.strategy) }}</td>
               <td>{{ row.count }}</td>
               <td>{{ row.wins }}</td>
               <td>{{ row.losses }}</td>
