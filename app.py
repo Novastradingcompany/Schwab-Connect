@@ -1849,6 +1849,28 @@ def bucket_period(date_val, period):
     return str(date_val.year)
 
 
+def period_bucket_to_year_month(bucket, period):
+    text = str(bucket or "")
+    try:
+        if period == "month":
+            year_str, month_str = text.split("-", 1)
+            return int(year_str), int(month_str)
+        if period == "quarter":
+            year_str, q_str = text.split("-Q", 1)
+            q = int(q_str)
+            month = ((q - 1) * 3) + 1
+            return int(year_str), month
+        if period == "week":
+            year_str, week_str = text.split("-W", 1)
+            d = dt.date.fromisocalendar(int(year_str), int(week_str), 1)
+            return d.year, d.month
+        if period == "year":
+            return int(text), None
+    except Exception:
+        return None, None
+    return None, None
+
+
 def build_yearly_summary(period, status_filter, tz_name="America/New_York"):
     entries = []
     try:
@@ -2403,9 +2425,28 @@ def summary():
     period = request.args.get("period", "month")
     status_filter = request.args.get("status", "all")
     sort_by = request.args.get("sort", "profit")
+    selected_year_raw = (request.args.get("year") or "").strip()
+    selected_month_raw = (request.args.get("month") or "").strip()
     tz = request.args.get("tz")
+    selected_year = int(selected_year_raw) if selected_year_raw.isdigit() else None
+    selected_month = int(selected_month_raw) if selected_month_raw.isdigit() else None
     error = None
     rows = []
+    year_options = []
+    month_options = [
+        {"value": 1, "label": "January"},
+        {"value": 2, "label": "February"},
+        {"value": 3, "label": "March"},
+        {"value": 4, "label": "April"},
+        {"value": 5, "label": "May"},
+        {"value": 6, "label": "June"},
+        {"value": 7, "label": "July"},
+        {"value": 8, "label": "August"},
+        {"value": 9, "label": "September"},
+        {"value": 10, "label": "October"},
+        {"value": 11, "label": "November"},
+        {"value": 12, "label": "December"},
+    ]
     stock_rows = []
     option_rows = []
     other_rows = []
@@ -2423,6 +2464,23 @@ def summary():
 
         tz_name = settings.get("timezone", "America/New_York")
         rows = build_yearly_summary(period, status_filter, tz_name=tz_name)
+        try:
+            now_local = dt.datetime.now(ZoneInfo(tz_name))
+        except Exception:
+            now_local = dt.datetime.now()
+        current_year = now_local.year
+
+        period_parts = [(row, *period_bucket_to_year_month(row.get("period"), period)) for row in rows]
+        discovered_years = {year for _, year, _ in period_parts if year}
+        discovered_years.add(current_year)
+        year_options = sorted(discovered_years, reverse=True)
+
+        if selected_year:
+            period_parts = [part for part in period_parts if part[1] == selected_year]
+        if selected_month and period != "year":
+            period_parts = [part for part in period_parts if part[2] == selected_month]
+        rows = [row for row, _, _ in period_parts]
+
         cache_ts = _TRANSACTIONS_CACHE.get("ts", 0.0)
         if cache_ts:
             tz_name = settings.get("timezone", "America/New_York")
@@ -2472,6 +2530,10 @@ def summary():
         period=period,
         status=status_filter,
         sort_by=sort_by,
+        selected_year=selected_year,
+        selected_month=selected_month,
+        year_options=year_options,
+        month_options=month_options,
         summary_last_updated=summary_last_updated,
         summary_last_updated_ago=summary_last_updated_ago,
     )

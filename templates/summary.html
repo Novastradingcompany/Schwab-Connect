@@ -48,6 +48,24 @@
           <option value="symbol" {% if sort_by == "symbol" %}selected{% endif %}>Symbol</option>
         </select>
       </label>
+      <label>
+        Year
+        <select name="year">
+          <option value="">All</option>
+          {% for y in year_options %}
+            <option value="{{ y }}" {% if selected_year == y %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Month
+        <select name="month">
+          <option value="">All</option>
+          {% for m in month_options %}
+            <option value="{{ m.value }}" {% if selected_month == m.value %}selected{% endif %}>{{ m.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
     </div>
     <div class="form-actions">
       <button class="button" type="submit">Update</button>
