@@ -1727,7 +1727,15 @@ def fetch_transactions_one_year():
 def _txn_symbol(txn):
     item = txn.get("transactionItem", {}) or {}
     instr = item.get("instrument", {}) or {}
-    return instr.get("symbol") or item.get("symbol") or txn.get("symbol")
+    if instr.get("symbol"):
+        return instr.get("symbol")
+    if item.get("symbol"):
+        return item.get("symbol")
+    for transfer in txn.get("transferItems", []) or []:
+        t_instr = (transfer or {}).get("instrument", {}) or {}
+        if t_instr.get("symbol"):
+            return t_instr.get("symbol")
+    return txn.get("symbol")
 
 
 def _txn_qty(txn):
@@ -1752,7 +1760,7 @@ def _txn_date(txn):
 
 def _summary_asset_type(raw_asset_type, symbol=None):
     asset_text = str(raw_asset_type or "").strip().upper()
-    if asset_text in {"OPTION", "OPTIONS"}:
+    if "OPTION" in asset_text:
         return "OPTION"
     if parse_option_symbol(symbol):
         return "OPTION"
@@ -1761,6 +1769,14 @@ def _summary_asset_type(raw_asset_type, symbol=None):
     if asset_text in {"STOCK", "EQUITY_OR_INDEX"}:
         return "STOCK"
     return asset_text or "OTHER"
+
+
+def _txn_asset_type(txn):
+    item = txn.get("transactionItem", {}) or {}
+    instr = item.get("instrument", {}) or {}
+    raw_asset = instr.get("assetType", "")
+    symbol = _txn_symbol(txn)
+    return _summary_asset_type(raw_asset, symbol)
 
 
 def _section_totals(rows):
@@ -1807,15 +1823,17 @@ def build_yearly_summary(period, status_filter):
     # Closed trades (net cash flow)
     if status_filter in ("all", "closed"):
         for txn in fetch_transactions_one_year():
-            if txn.get("transactionType") and "TRADE" not in str(txn.get("transactionType")):
+            txn_type = str(txn.get("transactionType") or "").upper()
+            asset_type = _txn_asset_type(txn)
+            # Include normal trades, plus option lifecycle events (expiry/assignment/exercise).
+            if "TRADE" not in txn_type and asset_type != "OPTION":
                 continue
             symbol = _txn_symbol(txn)
             if not symbol:
                 continue
-            raw_asset = (txn.get("transactionItem", {}) or {}).get("instrument", {}).get("assetType", "")
             entries.append({
                 "symbol": symbol,
-                "assetType": _summary_asset_type(raw_asset, symbol),
+                "assetType": asset_type,
                 "qty": _txn_qty(txn),
                 "pnl": _txn_pnl(txn),
                 "status": "closed",

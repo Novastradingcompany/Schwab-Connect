@@ -1,5 +1,14 @@
 {% extends "layout.html" %}
 {% block content %}
+  {% macro money(val) -%}
+    {%- set n = val|float -%}
+    {%- if n < 0 -%}
+      -${{ "%.2f"|format(n|abs) }}
+    {%- else -%}
+      ${{ "%.2f"|format(n) }}
+    {%- endif -%}
+  {%- endmacro %}
+
   <section class="hero">
     <div>
       <h1>Yearly Summary</h1>
@@ -77,9 +86,9 @@
               <td>{{ row.symbol }}</td>
               <td>{{ row.status }}</td>
               <td>{{ "%.2f"|format(row.qty) }}</td>
-              <td class="{% if row.profit > 0 %}pl-pos{% endif %}">{{ "%.2f"|format(row.profit) }}</td>
-              <td class="{% if row.loss < 0 %}pl-neg{% endif %}">{{ "%.2f"|format(row.loss) }}</td>
-              <td class="{% if row.pnl > 0 %}pl-pos{% elif row.pnl < 0 %}pl-neg{% endif %}">{{ "%.2f"|format(row.pnl) }}</td>
+              <td class="{% if row.profit > 0 %}pl-pos{% endif %}">{{ money(row.profit) }}</td>
+              <td class="{% if row.loss < 0 %}pl-neg{% endif %}">{{ money(row.loss) }}</td>
+              <td class="{% if row.pnl > 0 %}pl-pos{% elif row.pnl < 0 %}pl-neg{% endif %}">{{ money(row.pnl) }}</td>
             </tr>
           {% else %}
             <tr><td colspan="7">No stock data.</td></tr>
@@ -87,9 +96,9 @@
           <tr>
             <td colspan="3"><strong>Stock Subtotal</strong></td>
             <td><strong>{{ "%.2f"|format(stock_totals.qty) }}</strong></td>
-            <td class="{% if stock_totals.profit > 0 %}pl-pos{% endif %}"><strong>{{ "%.2f"|format(stock_totals.profit) }}</strong></td>
-            <td class="{% if stock_totals.loss < 0 %}pl-neg{% endif %}"><strong>{{ "%.2f"|format(stock_totals.loss) }}</strong></td>
-            <td class="{% if stock_totals.pnl > 0 %}pl-pos{% elif stock_totals.pnl < 0 %}pl-neg{% endif %}"><strong>{{ "%.2f"|format(stock_totals.pnl) }}</strong></td>
+            <td class="{% if stock_totals.profit > 0 %}pl-pos{% endif %}"><strong>{{ money(stock_totals.profit) }}</strong></td>
+            <td class="{% if stock_totals.loss < 0 %}pl-neg{% endif %}"><strong>{{ money(stock_totals.loss) }}</strong></td>
+            <td class="{% if stock_totals.pnl > 0 %}pl-pos{% elif stock_totals.pnl < 0 %}pl-neg{% endif %}"><strong>{{ money(stock_totals.pnl) }}</strong></td>
           </tr>
         </tbody>
       </table>
@@ -118,9 +127,9 @@
               <td>{{ row.symbol }}</td>
               <td>{{ row.status }}</td>
               <td>{{ "%.2f"|format(row.qty) }}</td>
-              <td class="{% if row.profit > 0 %}pl-pos{% endif %}">{{ "%.2f"|format(row.profit) }}</td>
-              <td class="{% if row.loss < 0 %}pl-neg{% endif %}">{{ "%.2f"|format(row.loss) }}</td>
-              <td class="{% if row.pnl > 0 %}pl-pos{% elif row.pnl < 0 %}pl-neg{% endif %}">{{ "%.2f"|format(row.pnl) }}</td>
+              <td class="{% if row.profit > 0 %}pl-pos{% endif %}">{{ money(row.profit) }}</td>
+              <td class="{% if row.loss < 0 %}pl-neg{% endif %}">{{ money(row.loss) }}</td>
+              <td class="{% if row.pnl > 0 %}pl-pos{% elif row.pnl < 0 %}pl-neg{% endif %}">{{ money(row.pnl) }}</td>
             </tr>
           {% else %}
             <tr><td colspan="7">No option data.</td></tr>
@@ -128,9 +137,9 @@
           <tr>
             <td colspan="3"><strong>Option Subtotal</strong></td>
             <td><strong>{{ "%.2f"|format(option_totals.qty) }}</strong></td>
-            <td class="{% if option_totals.profit > 0 %}pl-pos{% endif %}"><strong>{{ "%.2f"|format(option_totals.profit) }}</strong></td>
-            <td class="{% if option_totals.loss < 0 %}pl-neg{% endif %}"><strong>{{ "%.2f"|format(option_totals.loss) }}</strong></td>
-            <td class="{% if option_totals.pnl > 0 %}pl-pos{% elif option_totals.pnl < 0 %}pl-neg{% endif %}"><strong>{{ "%.2f"|format(option_totals.pnl) }}</strong></td>
+            <td class="{% if option_totals.profit > 0 %}pl-pos{% endif %}"><strong>{{ money(option_totals.profit) }}</strong></td>
+            <td class="{% if option_totals.loss < 0 %}pl-neg{% endif %}"><strong>{{ money(option_totals.loss) }}</strong></td>
+            <td class="{% if option_totals.pnl > 0 %}pl-pos{% elif option_totals.pnl < 0 %}pl-neg{% endif %}"><strong>{{ money(option_totals.pnl) }}</strong></td>
           </tr>
         </tbody>
       </table>
@@ -162,17 +171,17 @@
                 <td>{{ row.status }}</td>
                 <td>{{ row.assetType }}</td>
                 <td>{{ "%.2f"|format(row.qty) }}</td>
-                <td class="{% if row.profit > 0 %}pl-pos{% endif %}">{{ "%.2f"|format(row.profit) }}</td>
-                <td class="{% if row.loss < 0 %}pl-neg{% endif %}">{{ "%.2f"|format(row.loss) }}</td>
-                <td class="{% if row.pnl > 0 %}pl-pos{% elif row.pnl < 0 %}pl-neg{% endif %}">{{ "%.2f"|format(row.pnl) }}</td>
+                <td class="{% if row.profit > 0 %}pl-pos{% endif %}">{{ money(row.profit) }}</td>
+                <td class="{% if row.loss < 0 %}pl-neg{% endif %}">{{ money(row.loss) }}</td>
+                <td class="{% if row.pnl > 0 %}pl-pos{% elif row.pnl < 0 %}pl-neg{% endif %}">{{ money(row.pnl) }}</td>
               </tr>
             {% endfor %}
             <tr>
               <td colspan="4"><strong>Other Subtotal</strong></td>
               <td><strong>{{ "%.2f"|format(other_totals.qty) }}</strong></td>
-              <td class="{% if other_totals.profit > 0 %}pl-pos{% endif %}"><strong>{{ "%.2f"|format(other_totals.profit) }}</strong></td>
-              <td class="{% if other_totals.loss < 0 %}pl-neg{% endif %}"><strong>{{ "%.2f"|format(other_totals.loss) }}</strong></td>
-              <td class="{% if other_totals.pnl > 0 %}pl-pos{% elif other_totals.pnl < 0 %}pl-neg{% endif %}"><strong>{{ "%.2f"|format(other_totals.pnl) }}</strong></td>
+              <td class="{% if other_totals.profit > 0 %}pl-pos{% endif %}"><strong>{{ money(other_totals.profit) }}</strong></td>
+              <td class="{% if other_totals.loss < 0 %}pl-neg{% endif %}"><strong>{{ money(other_totals.loss) }}</strong></td>
+              <td class="{% if other_totals.pnl > 0 %}pl-pos{% elif other_totals.pnl < 0 %}pl-neg{% endif %}"><strong>{{ money(other_totals.pnl) }}</strong></td>
             </tr>
           </tbody>
         </table>
@@ -195,9 +204,9 @@
         <tbody>
           <tr>
             <td><strong>{{ "%.2f"|format(combined_totals.qty) }}</strong></td>
-            <td class="{% if combined_totals.profit > 0 %}pl-pos{% endif %}"><strong>{{ "%.2f"|format(combined_totals.profit) }}</strong></td>
-            <td class="{% if combined_totals.loss < 0 %}pl-neg{% endif %}"><strong>{{ "%.2f"|format(combined_totals.loss) }}</strong></td>
-            <td class="{% if combined_totals.pnl > 0 %}pl-pos{% elif combined_totals.pnl < 0 %}pl-neg{% endif %}"><strong>{{ "%.2f"|format(combined_totals.pnl) }}</strong></td>
+            <td class="{% if combined_totals.profit > 0 %}pl-pos{% endif %}"><strong>{{ money(combined_totals.profit) }}</strong></td>
+            <td class="{% if combined_totals.loss < 0 %}pl-neg{% endif %}"><strong>{{ money(combined_totals.loss) }}</strong></td>
+            <td class="{% if combined_totals.pnl > 0 %}pl-pos{% elif combined_totals.pnl < 0 %}pl-neg{% endif %}"><strong>{{ money(combined_totals.pnl) }}</strong></td>
           </tr>
         </tbody>
       </table>
