@@ -1750,6 +1750,29 @@ def _txn_date(txn):
         return dt.date.today()
 
 
+def _summary_asset_type(raw_asset_type, symbol=None):
+    asset_text = str(raw_asset_type or "").strip().upper()
+    if asset_text in {"OPTION", "OPTIONS"}:
+        return "OPTION"
+    if parse_option_symbol(symbol):
+        return "OPTION"
+    if asset_text in {"EQUITY", "ETF", "MUTUAL_FUND"}:
+        return "STOCK"
+    if asset_text in {"STOCK", "EQUITY_OR_INDEX"}:
+        return "STOCK"
+    return asset_text or "OTHER"
+
+
+def _section_totals(rows):
+    totals = {"qty": 0.0, "profit": 0.0, "loss": 0.0, "pnl": 0.0}
+    for row in rows:
+        totals["qty"] += _safe_float(row.get("qty")) or 0.0
+        totals["profit"] += _safe_float(row.get("profit")) or 0.0
+        totals["loss"] += _safe_float(row.get("loss")) or 0.0
+        totals["pnl"] += _safe_float(row.get("pnl")) or 0.0
+    return totals
+
+
 def bucket_period(date_val, period):
     if period == "week":
         year, week, _ = date_val.isocalendar()
@@ -1771,9 +1794,10 @@ def build_yearly_summary(period, status_filter):
     for pos in positions:
         if status_filter in ("closed",):
             continue
+        symbol = pos.get("symbol") or "UNKNOWN"
         entries.append({
-            "symbol": pos.get("symbol") or "UNKNOWN",
-            "assetType": pos.get("assetType") or "UNKNOWN",
+            "symbol": symbol,
+            "assetType": _summary_asset_type(pos.get("assetType"), symbol),
             "qty": _safe_float(pos.get("qty")) or 0.0,
             "pnl": _safe_float(pos.get("pnl")) or 0.0,
             "status": "open",
@@ -1788,9 +1812,10 @@ def build_yearly_summary(period, status_filter):
             symbol = _txn_symbol(txn)
             if not symbol:
                 continue
+            raw_asset = (txn.get("transactionItem", {}) or {}).get("instrument", {}).get("assetType", "")
             entries.append({
                 "symbol": symbol,
-                "assetType": (txn.get("transactionItem", {}) or {}).get("instrument", {}).get("assetType", "UNKNOWN"),
+                "assetType": _summary_asset_type(raw_asset, symbol),
                 "qty": _txn_qty(txn),
                 "pnl": _txn_pnl(txn),
                 "status": "closed",
@@ -1803,7 +1828,7 @@ def build_yearly_summary(period, status_filter):
         if status_filter != "all" and entry["status"] != status_filter:
             continue
         bucket = bucket_period(entry["date"], period)
-        key = (bucket, entry["symbol"], entry["status"])
+        key = (bucket, entry["symbol"], entry["status"], entry["assetType"])
         if key not in grouped:
             grouped[key] = {
                 "period": bucket,
@@ -1816,7 +1841,12 @@ def build_yearly_summary(period, status_filter):
         grouped[key]["qty"] += entry["qty"]
         grouped[key]["pnl"] += entry["pnl"]
 
-    return list(grouped.values())
+    rows = list(grouped.values())
+    for row in rows:
+        pnl = _safe_float(row.get("pnl")) or 0.0
+        row["profit"] = pnl if pnl > 0 else 0.0
+        row["loss"] = pnl if pnl < 0 else 0.0
+    return rows
 
 
 def format_results(df):
@@ -2305,6 +2335,13 @@ def summary():
     tz = request.args.get("tz")
     error = None
     rows = []
+    stock_rows = []
+    option_rows = []
+    other_rows = []
+    stock_totals = _section_totals([])
+    option_totals = _section_totals([])
+    other_totals = _section_totals([])
+    combined_totals = _section_totals([])
     summary_last_updated = None
     summary_last_updated_ago = None
     try:
@@ -2337,12 +2374,28 @@ def summary():
             rows = sorted(rows, key=lambda r: (r["symbol"], r["period"]))
         else:
             rows = sorted(rows, key=lambda r: r["pnl"], reverse=True)
+
+        stock_rows = [r for r in rows if r.get("assetType") == "STOCK"]
+        option_rows = [r for r in rows if r.get("assetType") == "OPTION"]
+        other_rows = [r for r in rows if r.get("assetType") not in {"STOCK", "OPTION"}]
+
+        stock_totals = _section_totals(stock_rows)
+        option_totals = _section_totals(option_rows)
+        other_totals = _section_totals(other_rows)
+        combined_totals = _section_totals(rows)
     except Exception as exc:
         error = str(exc)
 
     return render_template(
         "summary.html",
         rows=rows,
+        stock_rows=stock_rows,
+        option_rows=option_rows,
+        other_rows=other_rows,
+        stock_totals=stock_totals,
+        option_totals=option_totals,
+        other_totals=other_totals,
+        combined_totals=combined_totals,
         error=error,
         period=period,
         status=status_filter,
@@ -2388,7 +2441,7 @@ def export_summary():
     period = request.args.get("period", "month")
     status_filter = request.args.get("status", "all")
     rows = build_yearly_summary(period, status_filter)
-    headers = ["period", "symbol", "status", "assetType", "qty", "pnl"]
+    headers = ["period", "symbol", "status", "assetType", "qty", "profit", "loss", "pnl"]
     return _csv_response("summary.csv", rows, headers)
 
 
