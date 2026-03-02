@@ -1871,13 +1871,35 @@ def _txn_symbol(txn):
     instr = item.get("instrument", {}) or {}
     if instr.get("symbol"):
         return instr.get("symbol")
+    if instr.get("underlyingSymbol"):
+        return instr.get("underlyingSymbol")
     if item.get("symbol"):
         return item.get("symbol")
+    if txn.get("symbol"):
+        return txn.get("symbol")
     for transfer in txn.get("transferItems", []) or []:
         t_instr = (transfer or {}).get("instrument", {}) or {}
         if t_instr.get("symbol"):
             return t_instr.get("symbol")
-    return txn.get("symbol")
+        if t_instr.get("underlyingSymbol"):
+            return t_instr.get("underlyingSymbol")
+
+    # Some option transaction payloads omit instrument.symbol but include a concise description.
+    # Example: "SNDK 02/27/2026 577.50 P"
+    desc_candidates = [
+        instr.get("description"),
+        item.get("description"),
+        txn.get("description"),
+    ]
+    for raw in desc_candidates:
+        text = str(raw or "").strip().upper()
+        if not text:
+            continue
+        if parse_option_symbol(text):
+            return text
+        if re.match(r"^[A-Z]{1,6}\s+\d{1,2}/\d{1,2}/\d{2,4}\s+\d+(\.\d+)?\s+[CP]$", text):
+            return text
+    return None
 
 
 def _txn_qty(txn):
@@ -1891,7 +1913,12 @@ def _txn_pnl(txn):
 
 
 def _txn_date(txn, tz_name="America/New_York"):
-    raw = txn.get("transactionDate") or txn.get("tradeDate")
+    raw = (
+        txn.get("transactionDate")
+        or txn.get("tradeDate")
+        or txn.get("settlementDate")
+        or txn.get("effectiveDate")
+    )
     if not raw:
         try:
             return dt.datetime.now(ZoneInfo(tz_name)).date()
@@ -1952,6 +1979,52 @@ def _txn_asset_type(txn):
     raw_asset = instr.get("assetType", "")
     symbol = _txn_symbol(txn)
     return _summary_asset_type(raw_asset, symbol)
+
+
+def _txn_instruction(txn):
+    item = txn.get("transactionItem", {}) or {}
+    return str(item.get("instruction") or txn.get("transactionSubType") or "").strip().upper()
+
+
+def _include_in_closed_summary(txn):
+    txn_type = str(txn.get("transactionType") or "").strip().upper()
+    asset_type = _txn_asset_type(txn)
+    instruction = _txn_instruction(txn)
+    desc = " ".join([
+        str(txn.get("description") or ""),
+        str((txn.get("transactionItem") or {}).get("description") or ""),
+    ]).upper()
+    net_amount = _txn_pnl(txn)
+
+    if "TRADE" in txn_type:
+        return True
+    if instruction in {
+        "BUY",
+        "SELL",
+        "BUY_TO_OPEN",
+        "SELL_TO_OPEN",
+        "BUY_TO_CLOSE",
+        "SELL_TO_CLOSE",
+        "SELL_SHORT",
+        "BUY_TO_COVER",
+    }:
+        return True
+    if any(
+        phrase in desc
+        for phrase in (
+            "BUY TO OPEN",
+            "SELL TO OPEN",
+            "BUY TO CLOSE",
+            "SELL TO CLOSE",
+            "ASSIGNMENT",
+            "EXERCISE",
+            "EXPIRATION",
+        )
+    ):
+        return True
+    if asset_type == "OPTION" and net_amount != 0:
+        return True
+    return False
 
 
 def _section_totals(rows):
@@ -2036,14 +2109,12 @@ def build_yearly_summary(period, status_filter, tz_name="America/New_York"):
     # Closed trades (net cash flow)
     if status_filter in ("all", "closed"):
         for txn in fetch_transactions_one_year():
-            txn_type = str(txn.get("transactionType") or "").upper()
-            asset_type = _txn_asset_type(txn)
-            # Include normal trades, plus option lifecycle events (expiry/assignment/exercise).
-            if "TRADE" not in txn_type and asset_type != "OPTION":
+            if not _include_in_closed_summary(txn):
                 continue
             symbol = _txn_symbol(txn)
             if not symbol:
                 continue
+            asset_type = _txn_asset_type(txn)
             entries.append({
                 "symbol": symbol,
                 "assetType": asset_type,
