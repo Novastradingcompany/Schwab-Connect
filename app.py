@@ -2035,9 +2035,16 @@ def _compute_cashflow_from_item(txn):
 def _compute_cashflow_from_transfers(txn):
     total = 0.0
     found = False
+    asset_type = _txn_asset_type(txn)
     for transfer in txn.get("transferItems", []) or []:
         t = transfer or {}
-        for key in ("netAmount", "amount", "cost"):
+        # For options, transfer "amount" is often contract count (e.g. 1),
+        # while "cost"/"netAmount" carries dollars.
+        if asset_type == "OPTION":
+            keys = ("netAmount", "cost", "amount")
+        else:
+            keys = ("netAmount", "cost", "amount")
+        for key in keys:
             num = _safe_float(t.get(key))
             if num is None:
                 continue
@@ -2073,34 +2080,64 @@ def _txn_pnl(txn):
 
 
 def _txn_date(txn, tz_name="America/New_York"):
-    raw = (
-        txn.get("transactionDate")
-        or txn.get("tradeDate")
-        or txn.get("settlementDate")
-        or txn.get("effectiveDate")
-    )
-    if not raw:
+    def _to_local_date(raw):
+        if not raw:
+            return None
         try:
-            return dt.datetime.now(ZoneInfo(tz_name)).date()
-        except Exception:
-            return dt.date.today()
-    try:
-        parsed = dt.datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-        if parsed.tzinfo is None:
+            parsed = dt.datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                try:
+                    parsed = parsed.replace(tzinfo=ZoneInfo(tz_name))
+                except Exception:
+                    pass
             try:
-                parsed = parsed.replace(tzinfo=ZoneInfo(tz_name))
+                parsed = parsed.astimezone(ZoneInfo(tz_name))
             except Exception:
                 pass
-        try:
-            parsed = parsed.astimezone(ZoneInfo(tz_name))
+            return parsed.date()
         except Exception:
-            pass
-        return parsed.date()
+            return None
+
+    trade_like_fields = [
+        txn.get("transactionDate"),
+        txn.get("tradeDate"),
+        txn.get("activityDate"),
+        txn.get("orderDate"),
+    ]
+    settlement_fields = [
+        txn.get("settlementDate"),
+        txn.get("effectiveDate"),
+    ]
+    trade_like_dates = [d for d in (_to_local_date(v) for v in trade_like_fields) if d is not None]
+    settlement_dates = [d for d in (_to_local_date(v) for v in settlement_fields) if d is not None]
+
+    txn_type = str(txn.get("transactionType") or "").strip().upper()
+    instruction = _txn_instruction(txn)
+    is_trade_activity = (
+        "TRADE" in txn_type
+        or instruction in {
+            "BUY",
+            "SELL",
+            "BUY_TO_OPEN",
+            "SELL_TO_OPEN",
+            "BUY_TO_CLOSE",
+            "SELL_TO_CLOSE",
+            "SELL_SHORT",
+            "BUY_TO_COVER",
+        }
+    )
+
+    # For trade activity, use the earliest trade-like date when available.
+    if is_trade_activity and trade_like_dates:
+        return min(trade_like_dates)
+    if trade_like_dates:
+        return trade_like_dates[0]
+    if settlement_dates:
+        return settlement_dates[0]
+    try:
+        return dt.datetime.now(ZoneInfo(tz_name)).date()
     except Exception:
-        try:
-            return dt.datetime.now(ZoneInfo(tz_name)).date()
-        except Exception:
-            return dt.date.today()
+        return dt.date.today()
 
 
 def _summary_asset_type(raw_asset_type, symbol=None):
