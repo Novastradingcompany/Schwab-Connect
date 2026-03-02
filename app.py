@@ -1904,12 +1904,115 @@ def _txn_symbol(txn):
 
 def _txn_qty(txn):
     item = txn.get("transactionItem", {}) or {}
-    amt = item.get("amount")
-    return _safe_float(amt) or 0.0
+    instruction = _txn_instruction(txn)
+
+    qty = (
+        _safe_float(item.get("amount"))
+        or _safe_float(item.get("quantity"))
+        or _safe_float(item.get("quantityNumber"))
+    )
+    if qty is None:
+        transfer_qty = 0.0
+        found_transfer_qty = False
+        for transfer in txn.get("transferItems", []) or []:
+            t_qty = (
+                _safe_float((transfer or {}).get("amount"))
+                or _safe_float((transfer or {}).get("quantity"))
+                or _safe_float((transfer or {}).get("quantityNumber"))
+            )
+            if t_qty is None:
+                continue
+            transfer_qty += t_qty
+            found_transfer_qty = True
+        if found_transfer_qty:
+            qty = transfer_qty
+
+    if qty is None:
+        return 0.0
+
+    sell_instructions = {"SELL", "SELL_SHORT", "SELL_TO_OPEN", "SELL_TO_CLOSE"}
+    buy_instructions = {"BUY", "BUY_TO_OPEN", "BUY_TO_CLOSE", "BUY_TO_COVER"}
+    if instruction in sell_instructions:
+        return -abs(qty)
+    if instruction in buy_instructions:
+        return abs(qty)
+    return qty
+
+
+def _sum_numeric_values(obj):
+    total = 0.0
+    if isinstance(obj, dict):
+        for val in obj.values():
+            num = _safe_float(val)
+            if num is not None:
+                total += num
+    return total
+
+
+def _compute_cashflow_from_item(txn):
+    item = txn.get("transactionItem", {}) or {}
+    instruction = _txn_instruction(txn)
+    asset_type = _txn_asset_type(txn)
+
+    qty = _safe_float(item.get("amount"))
+    if qty is None:
+        qty = _safe_float(item.get("quantity")) or _safe_float(item.get("quantityNumber"))
+    price = _safe_float(item.get("price"))
+    if qty is None or price is None:
+        return None
+
+    multiplier = 100.0 if asset_type == "OPTION" else 1.0
+    gross = abs(qty) * abs(price) * multiplier
+    fees = abs(_sum_numeric_values(txn.get("fees") or {})) + abs(_sum_numeric_values(item.get("fees") or {}))
+
+    sell_instructions = {"SELL", "SELL_SHORT", "SELL_TO_OPEN", "SELL_TO_CLOSE"}
+    buy_instructions = {"BUY", "BUY_TO_OPEN", "BUY_TO_CLOSE", "BUY_TO_COVER"}
+    if instruction in sell_instructions:
+        return gross - fees
+    if instruction in buy_instructions:
+        return -gross - fees
+
+    # If instruction is missing, use any explicit "cost" and apply best-effort sign.
+    cost = _safe_float(item.get("cost"))
+    if cost is not None and cost != 0:
+        return cost
+    return None
+
+
+def _compute_cashflow_from_transfers(txn):
+    total = 0.0
+    found = False
+    for transfer in txn.get("transferItems", []) or []:
+        t = transfer or {}
+        for key in ("netAmount", "amount", "cost"):
+            num = _safe_float(t.get(key))
+            if num is None:
+                continue
+            total += num
+            found = True
+            break
+    if found:
+        return total
+    return None
 
 
 def _txn_pnl(txn):
-    return _safe_float(txn.get("netAmount")) or 0.0
+    net = _safe_float(txn.get("netAmount"))
+    if net is not None and net != 0:
+        return net
+
+    # Some Schwab transaction payloads report option trade economics only as
+    # instruction/quantity/price (+fees), with netAmount omitted or zero.
+    item_cashflow = _compute_cashflow_from_item(txn)
+    if item_cashflow is not None and item_cashflow != 0:
+        return item_cashflow
+
+    transfer_cashflow = _compute_cashflow_from_transfers(txn)
+    if transfer_cashflow is not None and transfer_cashflow != 0:
+        return transfer_cashflow
+
+    # Preserve explicit zero if present; otherwise default to 0.
+    return net or 0.0
 
 
 def _txn_date(txn, tz_name="America/New_York"):
