@@ -12,6 +12,7 @@ import csv
 import io
 import re
 import math
+import shutil
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -34,26 +35,43 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY") or os.urandom(24)
 _CLIENT = None
-SETTINGS_PATH = "settings.json"
+
+
+def _data_file(name):
+    data_dir = (os.getenv("DATA_DIR") or "").strip()
+    if not data_dir:
+        return name
+    os.makedirs(data_dir, exist_ok=True)
+    path = os.path.join(data_dir, name)
+    # One-time migration from repo-root file to persistent disk file.
+    if not os.path.exists(path) and os.path.exists(name):
+        try:
+            shutil.copyfile(name, path)
+        except Exception:
+            pass
+    return path
+
+
+SETTINGS_PATH = _data_file("settings.json")
 NOVA_CHAT = []
 _OPENAI_CLIENT = None
 NOVA_ERROR = None
-ALERTS_PATH = "alerts.json"
-ALERTS_STATE_PATH = "alerts_state.json"
+ALERTS_PATH = _data_file("alerts.json")
+ALERTS_STATE_PATH = _data_file("alerts_state.json")
 ALERTS = []
 _ALERTS_LOCK = threading.Lock()
 _MONITOR_THREAD = None
 _MONITOR_LOCK = threading.Lock()
 NOVA_OPTIONS_RESPONSE = None
 NOVA_OPTIONS_ERROR = None
-WATCHLIST_PATH = "watchlist.json"
-TICKETS_PATH = "tickets.json"
-TRADE_JOURNAL_PATH = "trade_journal.json"
-MONITOR_STATE_PATH = "monitor_state.json"
-ERROR_LOG_PATH = "error_log.json"
+WATCHLIST_PATH = _data_file("watchlist.json")
+TICKETS_PATH = _data_file("tickets.json")
+TRADE_JOURNAL_PATH = _data_file("trade_journal.json")
+MONITOR_STATE_PATH = _data_file("monitor_state.json")
+ERROR_LOG_PATH = _data_file("error_log.json")
 SP500_PATH = os.path.join("nova-options-scanner-main", "nova-options-scanner-main", "sp500_symbols.json")
 OPTIONABLE_UNIVERSE_PATH = "optionable_universe.json"
-MOVERS_SNAPSHOT_PATH = "movers_snapshot.json"
+MOVERS_SNAPSHOT_PATH = _data_file("movers_snapshot.json")
 MANUAL_PATH = os.path.join("docs", "manual.md")
 _QUOTE_CACHE = {}
 _QUOTE_CACHE_TTL = 15
@@ -1217,7 +1235,27 @@ def _safe_float(value):
     try:
         return float(value)
     except (TypeError, ValueError):
-        return None
+        pass
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        neg = False
+        if text.startswith("(") and text.endswith(")"):
+            neg = True
+            text = text[1:-1]
+        text = text.replace("$", "").replace(",", "").replace("%", "").strip()
+        if text.endswith("CR"):
+            text = text[:-2].strip()
+        if text.endswith("DR"):
+            text = text[:-2].strip()
+            neg = True
+        try:
+            val = float(text)
+            return -val if neg else val
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 def normalize_quote(raw):
@@ -1905,12 +1943,22 @@ def _txn_symbol(txn):
 def _txn_qty(txn):
     item = txn.get("transactionItem", {}) or {}
     instruction = _txn_instruction(txn)
+    asset_type = _txn_asset_type(txn)
 
-    qty = (
-        _safe_float(item.get("amount"))
-        or _safe_float(item.get("quantity"))
-        or _safe_float(item.get("quantityNumber"))
-    )
+    # For options, Schwab may place non-contract values in "amount" (e.g. 0.01).
+    # Prefer explicit contract quantity fields first.
+    if asset_type == "OPTION":
+        qty = (
+            _safe_float(item.get("quantity"))
+            or _safe_float(item.get("quantityNumber"))
+            or _safe_float(item.get("amount"))
+        )
+    else:
+        qty = (
+            _safe_float(item.get("amount"))
+            or _safe_float(item.get("quantity"))
+            or _safe_float(item.get("quantityNumber"))
+        )
     if qty is None:
         transfer_qty = 0.0
         found_transfer_qty = False
@@ -1954,16 +2002,25 @@ def _compute_cashflow_from_item(txn):
     instruction = _txn_instruction(txn)
     asset_type = _txn_asset_type(txn)
 
-    qty = _safe_float(item.get("amount"))
-    if qty is None:
+    if asset_type == "OPTION":
         qty = _safe_float(item.get("quantity")) or _safe_float(item.get("quantityNumber"))
+        if qty is None:
+            qty = _safe_float(item.get("amount"))
+    else:
+        qty = _safe_float(item.get("amount"))
+        if qty is None:
+            qty = _safe_float(item.get("quantity")) or _safe_float(item.get("quantityNumber"))
     price = _safe_float(item.get("price"))
+    fees = abs(_sum_numeric_values(txn.get("fees") or {})) + abs(_sum_numeric_values(item.get("fees") or {}))
+    cost = _safe_float(item.get("cost"))
+    if cost is not None and cost != 0:
+        return cost - fees
+
     if qty is None or price is None:
         return None
 
     multiplier = 100.0 if asset_type == "OPTION" else 1.0
     gross = abs(qty) * abs(price) * multiplier
-    fees = abs(_sum_numeric_values(txn.get("fees") or {})) + abs(_sum_numeric_values(item.get("fees") or {}))
 
     sell_instructions = {"SELL", "SELL_SHORT", "SELL_TO_OPEN", "SELL_TO_CLOSE"}
     buy_instructions = {"BUY", "BUY_TO_OPEN", "BUY_TO_CLOSE", "BUY_TO_COVER"}
@@ -1972,10 +2029,6 @@ def _compute_cashflow_from_item(txn):
     if instruction in buy_instructions:
         return -gross - fees
 
-    # If instruction is missing, use any explicit "cost" and apply best-effort sign.
-    cost = _safe_float(item.get("cost"))
-    if cost is not None and cost != 0:
-        return cost
     return None
 
 
@@ -1998,18 +2051,22 @@ def _compute_cashflow_from_transfers(txn):
 
 def _txn_pnl(txn):
     net = _safe_float(txn.get("netAmount"))
-    if net is not None and net != 0:
-        return net
 
     # Some Schwab transaction payloads report option trade economics only as
     # instruction/quantity/price (+fees), with netAmount omitted or zero.
     item_cashflow = _compute_cashflow_from_item(txn)
-    if item_cashflow is not None and item_cashflow != 0:
-        return item_cashflow
-
     transfer_cashflow = _compute_cashflow_from_transfers(txn)
-    if transfer_cashflow is not None and transfer_cashflow != 0:
-        return transfer_cashflow
+
+    candidates = [v for v in [net, item_cashflow, transfer_cashflow] if v is not None and v != 0]
+    if candidates:
+        if _txn_asset_type(txn) == "OPTION":
+            # Option payload variants can disagree; prefer the largest-magnitude
+            # non-zero candidate to avoid under-reporting as +/-1.
+            return max(candidates, key=lambda x: abs(x))
+        # For non-options, prefer explicit net amount first.
+        if net is not None and net != 0:
+            return net
+        return candidates[0]
 
     # Preserve explicit zero if present; otherwise default to 0.
     return net or 0.0
