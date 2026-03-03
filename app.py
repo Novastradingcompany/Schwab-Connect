@@ -2063,11 +2063,16 @@ def _extract_price_from_text(text):
     # Common broker text formats: "... @ 6.92" or "... @ $6.92"
     match = re.search(r"@\s*\$?\s*([0-9]+(?:\.[0-9]+)?)", raw, re.IGNORECASE)
     if match:
-        return _safe_float(match.group(1))
-    # Fallback: first currency-like number in context.
-    match = re.search(r"\$\s*([0-9][0-9,]*(?:\.[0-9]+)?)", raw)
+        val = _safe_float(match.group(1))
+        if val is not None and 0 < val < 100:
+            return val
+        return None
+    # Conservative fallback for cases like "PRICE 6.92" / "AT 6.92".
+    match = re.search(r"\b(?:PRICE|AT)\s+\$?\s*([0-9]+(?:\.[0-9]+)?)\b", raw, re.IGNORECASE)
     if match:
-        return _safe_float(match.group(1))
+        val = _safe_float(match.group(1))
+        if val is not None and 0 < val < 100:
+            return val
     return None
 
 
