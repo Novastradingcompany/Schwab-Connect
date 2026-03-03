@@ -2894,6 +2894,59 @@ def trade_journal():
     error = None
     message = None
     trades = load_trade_journal()
+    edit_trade = None
+
+    def _coerce_trade_from_form(existing=None):
+        symbol = request.form.get("symbol", "").strip().upper()
+        strategy = request.form.get("strategy", "").strip()
+        thesis = request.form.get("thesis", "").strip()
+        status = request.form.get("status", "open").strip().lower()
+        entry_date = request.form.get("entry_date", "").strip()
+        expiry_date = request.form.get("expiry_date", "").strip()
+        exit_date = request.form.get("exit_date", "").strip()
+        max_loss = _safe_float(request.form.get("max_loss"))
+        target = _safe_float(request.form.get("target"))
+        realized_pnl = _safe_float(request.form.get("realized_pnl"))
+        notes = request.form.get("notes", "").strip()
+        outcome = request.form.get("outcome", "").strip()
+
+        checks = {
+            "setup_match": request.form.get("check_setup_match") == "1",
+            "risk_within_cap": request.form.get("check_risk_within_cap") == "1",
+            "min_pop_met": request.form.get("check_min_pop_met") == "1",
+            "size_valid": request.form.get("check_size_valid") == "1",
+            "no_rule_violation": request.form.get("check_no_rule_violation") == "1",
+        }
+
+        trade = {
+            "id": (existing or {}).get("id") or dt.datetime.now().strftime("%Y%m%d%H%M%S%f"),
+            "created_at": (existing or {}).get("created_at") or dt.datetime.now().isoformat(timespec="seconds"),
+            "updated_at": dt.datetime.now().isoformat(timespec="seconds"),
+            "symbol": symbol,
+            "strategy": strategy,
+            "thesis": thesis,
+            "status": status,
+            "entry_date": entry_date,
+            "expiry_date": expiry_date,
+            "exit_date": exit_date,
+            "max_loss": max_loss,
+            "target": target,
+            "realized_pnl": realized_pnl,
+            "outcome": outcome,
+            "notes": notes,
+            "checks": checks,
+        }
+        gate = _trade_gate_result(trade)
+        trade["gate_passed"] = gate["passed"]
+        trade["gate_failed_reasons"] = gate["failed_reasons"]
+
+        if not symbol:
+            raise RuntimeError("Symbol is required.")
+        if max_loss is None:
+            raise RuntimeError("Max loss is required.")
+        if status == "open" and not gate["passed"]:
+            raise RuntimeError("Trade blocked by gate: " + "; ".join(gate["failed_reasons"]))
+        return trade
 
     if request.method == "POST":
         action = request.form.get("action", "add")
@@ -2903,55 +2956,17 @@ def trade_journal():
                 trades = [t for t in trades if str(t.get("id")) != trade_id]
                 save_trade_journal(trades)
                 message = "Trade deleted."
+            elif action == "update":
+                trade_id = request.form.get("trade_id", "").strip()
+                target_index = next((i for i, t in enumerate(trades) if str(t.get("id")) == trade_id), None)
+                if target_index is None:
+                    raise RuntimeError("Trade not found for update.")
+                updated = _coerce_trade_from_form(existing=trades[target_index])
+                trades[target_index] = updated
+                save_trade_journal(trades)
+                message = "Trade updated."
             elif action == "add":
-                symbol = request.form.get("symbol", "").strip().upper()
-                strategy = request.form.get("strategy", "").strip()
-                thesis = request.form.get("thesis", "").strip()
-                status = request.form.get("status", "open").strip().lower()
-                entry_date = request.form.get("entry_date", "").strip()
-                expiry_date = request.form.get("expiry_date", "").strip()
-                exit_date = request.form.get("exit_date", "").strip()
-                max_loss = _safe_float(request.form.get("max_loss"))
-                target = _safe_float(request.form.get("target"))
-                realized_pnl = _safe_float(request.form.get("realized_pnl"))
-                notes = request.form.get("notes", "").strip()
-                outcome = request.form.get("outcome", "").strip()
-
-                checks = {
-                    "setup_match": request.form.get("check_setup_match") == "1",
-                    "risk_within_cap": request.form.get("check_risk_within_cap") == "1",
-                    "min_pop_met": request.form.get("check_min_pop_met") == "1",
-                    "size_valid": request.form.get("check_size_valid") == "1",
-                    "no_rule_violation": request.form.get("check_no_rule_violation") == "1",
-                }
-                trade = {
-                    "id": dt.datetime.now().strftime("%Y%m%d%H%M%S%f"),
-                    "created_at": dt.datetime.now().isoformat(timespec="seconds"),
-                    "symbol": symbol,
-                    "strategy": strategy,
-                    "thesis": thesis,
-                    "status": status,
-                    "entry_date": entry_date,
-                    "expiry_date": expiry_date,
-                    "exit_date": exit_date,
-                    "max_loss": max_loss,
-                    "target": target,
-                    "realized_pnl": realized_pnl,
-                    "outcome": outcome,
-                    "notes": notes,
-                    "checks": checks,
-                }
-                gate = _trade_gate_result(trade)
-                trade["gate_passed"] = gate["passed"]
-                trade["gate_failed_reasons"] = gate["failed_reasons"]
-
-                if not symbol:
-                    raise RuntimeError("Symbol is required.")
-                if max_loss is None:
-                    raise RuntimeError("Max loss is required.")
-                if status == "open" and not gate["passed"]:
-                    raise RuntimeError("Trade blocked by gate: " + "; ".join(gate["failed_reasons"]))
-
+                trade = _coerce_trade_from_form(existing=None)
                 trades.insert(0, trade)
                 save_trade_journal(trades)
                 message = "Trade logged."
@@ -2960,12 +2975,18 @@ def trade_journal():
         except Exception as exc:
             error = str(exc)
 
+    edit_id = request.args.get("edit", "").strip()
+    if edit_id:
+        edit_trade = next((t for t in trades if str(t.get("id")) == edit_id), None)
+        if edit_trade is None and not error:
+            error = "Trade selected for edit was not found."
+
     trades = sorted(
         trades,
         key=lambda t: t.get("created_at") or "",
         reverse=True,
     )
-    return render_template("trade_journal.html", trades=trades, error=error, message=message)
+    return render_template("trade_journal.html", trades=trades, error=error, message=message, edit_trade=edit_trade)
 
 
 @app.route("/journal/stats")
