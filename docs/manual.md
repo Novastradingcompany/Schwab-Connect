@@ -4,8 +4,10 @@
 
 Nova Schwab is a web dashboard for:
 - Viewing Schwab account and positions data
+- Reviewing yearly summary across open + closed activity
 - Scanning options strategies (bull put, bear call, iron condor)
 - Managing a watchlist and draft tickets
+- Logging and editing a trade journal over time
 - Running a separate Movers Agent and adding picks to watchlist
 - Using Nova (LLM assistant) to explain or analyze scan output
 
@@ -155,12 +157,93 @@ Operational page for:
 - Token status checks
 - Manual refresh call path
 - Other system utilities and diagnostics
+- Transaction reconcile debug link (`/debug/txn-reconcile`)
 
 Use this page first when Schwab data appears stale or unavailable.
 
 ---
 
-## 10) Common Troubleshooting
+## 10) Yearly Summary (`/summary`)
+
+Purpose:
+- Show open + closed activity grouped by symbol and period
+- Split sections: Stocks, Options, Cash, Other
+
+Filters:
+- Period (`week`, `month`, `quarter`, `year`)
+- Status (`all`, `open`, `closed`)
+- Year and month filters
+
+Notes:
+- Open rows come from current positions and balances.
+- Closed rows come from Schwab transactions.
+- Schwab option close activity can be inconsistent in API payload fields; use reconcile debug for validation when totals look off.
+
+---
+
+## 11) Transaction Reconcile Debug (`/debug/txn-reconcile`)
+
+Use this page to compare raw Schwab transaction fields against summary math.
+
+Inputs:
+- Symbol text filter (for example `SNDK`)
+- Asset filter (`OPTION`, `STOCK`, `CASH`, `ALL`)
+- Start/end date
+- Include mode (closed-summary rows only vs all matching rows)
+
+Outputs:
+- Totals for chosen P/L, `netAmount`, item cashflow, transfer cashflow, description cashflow
+- Per-symbol totals
+- Full row view with txn/account identifiers and raw field breakdown
+
+Use this when summary totals do not match Schwab Transaction History.
+
+---
+
+## 12) Trade Journal (`/journal`)
+
+Journal supports full lifecycle logging:
+- Add a trade at entry
+- Edit the same trade later (status, exit date, realized P/L, notes, outcome)
+- Delete trade
+
+Edit flow:
+1. Click `Edit` on a row.
+2. Form pre-fills with existing values.
+3. Click `Update Trade` to save.
+4. Use `Cancel Edit` to leave unchanged.
+
+Gate behavior:
+- Open trades still require gate checks to pass.
+- Closed/expired updates can be recorded with final outcome and P/L.
+
+---
+
+## 13) Persistent Data on Render (Important)
+
+Without persistent storage, JSON files reset on redeploy.
+
+Set up persistent disk:
+1. Open your Render service settings.
+2. Add a persistent disk.
+3. Mount path: `/var/data`
+4. Add env var: `DATA_DIR=/var/data`
+5. Redeploy
+
+Files written through this path include:
+- `settings.json`
+- `alerts.json`
+- `alerts_state.json`
+- `watchlist.json`
+- `tickets.json`
+- `trade_journal.json`
+- `monitor_state.json`
+- `error_log.json`
+- `movers_snapshot.json`
+
+---
+
+## 14) Common Troubleshooting
 
 ### A) `refresh_token_authentication_error` or `unsupported_token_type`
 
@@ -199,11 +282,14 @@ Fix:
 
 ---
 
-## 11) File Quick Reference
+## 15) File Quick Reference
 
 - Main app: `app.py`
 - Options templates: `templates/options.html`
 - Movers page template: `templates/movers_agent.html`
+- Summary page template: `templates/summary.html`
+- Journal page template: `templates/trade_journal.html`
+- Reconcile debug template: `templates/txn_reconcile.html`
 - Layout/nav: `templates/layout.html`
 - Styles: `static/styles.css`
 - Universe file: `optionable_universe.json`
@@ -214,11 +300,10 @@ Fix:
 
 ---
 
-## 12) Recommended Weekly Workflow
+## 16) Recommended Weekly Workflow
 
 1. Open `Movers Agent`, run weekly scan, add selected names to watchlist.
 2. Open `Options Chain` for each symbol and scan spreads.
 3. Set pricing mode to match execution intent (`Custom limit` if ticket-driven).
 4. Use Nova explain/analyze for final review.
 5. Create ticket drafts.
-
