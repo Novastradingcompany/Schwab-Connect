@@ -87,7 +87,7 @@ _ACCOUNT_HASH_CACHE = {"ts": 0.0, "value": {}}
 _ACCOUNT_HASH_CACHE_TTL = 900
 _TRANSACTIONS_CACHE = {"ts": 0.0, "value": []}
 _TRANSACTIONS_CACHE_TTL = 900
-_TRANSACTIONS_FETCH_BUDGET_SEC = 8
+_TRANSACTIONS_FETCH_BUDGET_SEC = 20
 NOVA_MODEL_OPTIONS = [
     "gpt-4o",
     "gpt-4.1",
@@ -1865,6 +1865,38 @@ def fetch_transactions_one_year():
     all_txns = []
     deadline = time.monotonic() + _TRANSACTIONS_FETCH_BUDGET_SEC
 
+    def _txn_key(txn, acct_num):
+        item = (txn or {}).get("transactionItem", {}) or {}
+        instr = (item.get("instrument") or {}) if isinstance(item, dict) else {}
+        return (
+            str(acct_num or ""),
+            str((txn or {}).get("transactionId") or ""),
+            str((txn or {}).get("transactionDate") or (txn or {}).get("tradeDate") or ""),
+            str((txn or {}).get("transactionType") or ""),
+            str(item.get("instruction") or ""),
+            str(instr.get("symbol") or instr.get("underlyingSymbol") or item.get("symbol") or (txn or {}).get("symbol") or ""),
+        )
+
+    best_by_key = {}
+
+    def _txn_quality(txn):
+        item = (txn or {}).get("transactionItem", {}) or {}
+        return (
+            (1 if _safe_float((txn or {}).get("netAmount")) not in (None, 0) else 0)
+            + (1 if _safe_float(item.get("cost")) not in (None, 0) else 0)
+            + (1 if _safe_float(item.get("price")) not in (None, 0) else 0)
+            + (1 if _safe_float(item.get("amount")) not in (None, 0) else 0)
+            + (1 if _safe_float(item.get("quantity")) not in (None, 0) else 0)
+            + (1 if bool((txn or {}).get("transferItems")) else 0)
+        )
+
+    def _ingest_txn(txn, acct_num):
+        txn["accountNumber"] = acct_num
+        key = _txn_key(txn, acct_num)
+        current = best_by_key.get(key)
+        if current is None or _txn_quality(txn) > _txn_quality(current):
+            best_by_key[key] = txn
+
     for acct_num, acct_hash in account_hashes.items():
         if time.monotonic() >= deadline:
             break
@@ -1875,6 +1907,7 @@ def fetch_transactions_one_year():
                 break
             window_start = max(start_date, window_end - dt.timedelta(days=59))
             try:
+                # Pull default transaction view.
                 response = schwab_request(
                     lambda: client.get_transactions(
                         acct_hash,
@@ -1887,8 +1920,24 @@ def fetch_transactions_one_year():
                 data = response.json()
                 if isinstance(data, list):
                     for txn in data:
-                        txn["accountNumber"] = acct_num
-                    all_txns.extend(data)
+                        _ingest_txn(txn, acct_num)
+
+                # Pull TRADE-only view as well. Schwab sometimes places the
+                # usable option cashflow here while default rows show zeros.
+                trade_response = schwab_request(
+                    lambda: client.get_transactions(
+                        acct_hash,
+                        start_date=window_start,
+                        end_date=window_end,
+                        transaction_types=[client.Transactions.TransactionType.TRADE],
+                    ),
+                    "get_transactions_trade_only",
+                )
+                trade_response.raise_for_status()
+                trade_data = trade_response.json()
+                if isinstance(trade_data, list):
+                    for txn in trade_data:
+                        _ingest_txn(txn, acct_num)
             except Exception as exc:
                 log_error(exc, context="fetch_transactions_one_year")
                 if cached:
@@ -1896,6 +1945,7 @@ def fetch_transactions_one_year():
                 break
             window_end = window_start - dt.timedelta(seconds=1)
 
+    all_txns = list(best_by_key.values())
     if all_txns:
         _TRANSACTIONS_CACHE["ts"] = now
         _TRANSACTIONS_CACHE["value"] = all_txns
@@ -3302,6 +3352,7 @@ def debug_txn_reconcile():
 
             row = {
                 "date": txn_date.isoformat(),
+                "accountNumber": txn.get("accountNumber"),
                 "symbol": symbol,
                 "assetType": asset_type,
                 "txnType": str(txn.get("transactionType") or "").strip().upper(),

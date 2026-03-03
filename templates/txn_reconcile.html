@@ -118,6 +118,8 @@
         <thead>
           <tr>
             <th>Date</th>
+            <th>Txn ID</th>
+            <th>Account</th>
             <th>Symbol</th>
             <th>Txn Type</th>
             <th>Instruction</th>
@@ -141,6 +143,8 @@
           {% for row in rows %}
             <tr>
               <td>{{ row.date }}</td>
+              <td>{{ row.transactionId }}</td>
+              <td>{{ row.accountNumber }}</td>
               <td>{{ row.symbol }}</td>
               <td>{{ row.txnType }}</td>
               <td>{{ row.instruction }}</td>
@@ -160,7 +164,7 @@
               <td>{{ row.item_description }}</td>
             </tr>
           {% else %}
-            <tr><td colspan="18">No matching transactions.</td></tr>
+            <tr><td colspan="20">No matching transactions.</td></tr>
           {% endfor %}
         </tbody>
       </table>
