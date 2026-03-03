@@ -69,6 +69,7 @@
             <th>NetAmount Sum</th>
             <th>Item Cashflow Sum</th>
             <th>Transfer Cashflow Sum</th>
+            <th>Description Cashflow Sum</th>
           </tr>
         </thead>
         <tbody>
@@ -79,6 +80,7 @@
             <td>{{ money(totals.net) }}</td>
             <td>{{ money(totals.item_cashflow) }}</td>
             <td>{{ money(totals.transfer_cashflow) }}</td>
+            <td>{{ money(totals.desc_cashflow) }}</td>
           </tr>
         </tbody>
       </table>
@@ -125,11 +127,14 @@
             <th>netAmount</th>
             <th>itemCashflow</th>
             <th>transferCashflow</th>
+            <th>descCashflow</th>
             <th>Fees</th>
             <th>Price</th>
             <th>item.amount</th>
             <th>item.qty</th>
             <th>item.cost</th>
+            <th>Txn Description</th>
+            <th>Item Description</th>
           </tr>
         </thead>
         <tbody>
@@ -145,14 +150,17 @@
               <td>{{ money(row.net) }}</td>
               <td>{{ money(row.item_cashflow) }}</td>
               <td>{{ money(row.transfer_cashflow) }}</td>
+              <td>{{ money(row.desc_cashflow) }}</td>
               <td>{{ money(row.fees) }}</td>
               <td>{{ "%.4f"|format(row.price or 0) }}</td>
               <td>{{ "%.4f"|format(row.item_amount or 0) }}</td>
               <td>{{ "%.4f"|format(row.item_quantity or 0) }}</td>
               <td>{{ money(row.item_cost) }}</td>
+              <td>{{ row.txn_description }}</td>
+              <td>{{ row.item_description }}</td>
             </tr>
           {% else %}
-            <tr><td colspan="15">No matching transactions.</td></tr>
+            <tr><td colspan="18">No matching transactions.</td></tr>
           {% endfor %}
         </tbody>
       </table>

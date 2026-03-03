@@ -2056,6 +2056,64 @@ def _compute_cashflow_from_transfers(txn):
     return None
 
 
+def _extract_price_from_text(text):
+    raw = str(text or "")
+    if not raw:
+        return None
+    # Common broker text formats: "... @ 6.92" or "... @ $6.92"
+    match = re.search(r"@\s*\$?\s*([0-9]+(?:\.[0-9]+)?)", raw, re.IGNORECASE)
+    if match:
+        return _safe_float(match.group(1))
+    # Fallback: first currency-like number in context.
+    match = re.search(r"\$\s*([0-9][0-9,]*(?:\.[0-9]+)?)", raw)
+    if match:
+        return _safe_float(match.group(1))
+    return None
+
+
+def _compute_cashflow_from_description(txn):
+    desc = " ".join([
+        str(txn.get("description") or ""),
+        str((txn.get("transactionItem") or {}).get("description") or ""),
+    ]).strip()
+    if not desc:
+        return None
+
+    asset_type = _txn_asset_type(txn)
+    if asset_type != "OPTION":
+        return None
+
+    qty = _txn_qty(txn)
+    if not qty:
+        return None
+
+    instruction = _txn_instruction(txn)
+    desc_up = desc.upper()
+    if not instruction:
+        if "BUY TO OPEN" in desc_up or "BUY TO CLOSE" in desc_up or "BUY TO COVER" in desc_up:
+            instruction = "BUY"
+        elif "SELL TO OPEN" in desc_up or "SELL TO CLOSE" in desc_up or "SELL SHORT" in desc_up:
+            instruction = "SELL"
+
+    price = _extract_price_from_text(desc)
+    if price is None:
+        return None
+
+    gross = abs(qty) * abs(price) * 100.0
+    fees = abs(_sum_numeric_values(txn.get("fees") or {})) + abs(_sum_numeric_values((txn.get("transactionItem") or {}).get("fees") or {}))
+
+    sell_instructions = {"SELL", "SELL_SHORT", "SELL_TO_OPEN", "SELL_TO_CLOSE"}
+    buy_instructions = {"BUY", "BUY_TO_OPEN", "BUY_TO_CLOSE", "BUY_TO_COVER"}
+    if instruction in sell_instructions:
+        return gross - fees
+    if instruction in buy_instructions:
+        return -gross - fees
+
+    # If instruction is still unknown, infer sign from qty convention.
+    # In our summary qty > 0 is buy-like and qty < 0 is sell-like.
+    return (-gross - fees) if qty > 0 else (gross - fees)
+
+
 def _txn_pnl(txn):
     net = _safe_float(txn.get("netAmount"))
 
@@ -2063,8 +2121,9 @@ def _txn_pnl(txn):
     # instruction/quantity/price (+fees), with netAmount omitted or zero.
     item_cashflow = _compute_cashflow_from_item(txn)
     transfer_cashflow = _compute_cashflow_from_transfers(txn)
+    desc_cashflow = _compute_cashflow_from_description(txn)
 
-    candidates = [v for v in [net, item_cashflow, transfer_cashflow] if v is not None and v != 0]
+    candidates = [v for v in [net, item_cashflow, transfer_cashflow, desc_cashflow] if v is not None and v != 0]
     if candidates:
         if _txn_asset_type(txn) == "OPTION":
             # Option payload variants can disagree; prefer the largest-magnitude
@@ -3205,6 +3264,7 @@ def debug_txn_reconcile():
         "net": 0.0,
         "item_cashflow": 0.0,
         "transfer_cashflow": 0.0,
+        "desc_cashflow": 0.0,
     }
     by_symbol = {}
     try:
@@ -3232,6 +3292,7 @@ def debug_txn_reconcile():
             net = _safe_float(txn.get("netAmount"))
             item_cashflow = _compute_cashflow_from_item(txn)
             transfer_cashflow = _compute_cashflow_from_transfers(txn)
+            desc_cashflow = _compute_cashflow_from_description(txn)
             fee_total = abs(_sum_numeric_values(txn.get("fees") or {})) + abs(_sum_numeric_values(item.get("fees") or {}))
 
             row = {
@@ -3246,11 +3307,14 @@ def debug_txn_reconcile():
                 "net": net,
                 "item_cashflow": item_cashflow,
                 "transfer_cashflow": transfer_cashflow,
+                "desc_cashflow": desc_cashflow,
                 "fees": fee_total,
                 "price": _safe_float(item.get("price")),
                 "item_amount": _safe_float(item.get("amount")),
                 "item_quantity": _safe_float(item.get("quantity")) or _safe_float(item.get("quantityNumber")),
                 "item_cost": _safe_float(item.get("cost")),
+                "txn_description": str(txn.get("description") or ""),
+                "item_description": str(item.get("description") or ""),
                 "transactionId": txn.get("transactionId"),
             }
             rows.append(row)
@@ -3261,6 +3325,7 @@ def debug_txn_reconcile():
             totals["net"] += net or 0.0
             totals["item_cashflow"] += item_cashflow or 0.0
             totals["transfer_cashflow"] += transfer_cashflow or 0.0
+            totals["desc_cashflow"] += desc_cashflow or 0.0
 
             by_symbol.setdefault(symbol, 0.0)
             by_symbol[symbol] += pnl or 0.0
