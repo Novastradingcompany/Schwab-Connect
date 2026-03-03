@@ -3162,6 +3162,128 @@ def tools():
     )
 
 
+def _parse_iso_date(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return dt.date.fromisoformat(text[:10])
+    except Exception:
+        return None
+
+
+@app.route("/debug/txn-reconcile")
+def debug_txn_reconcile():
+    settings = load_settings()
+    tz_name = settings.get("timezone", "America/New_York")
+    try:
+        local_today = dt.datetime.now(ZoneInfo(tz_name)).date()
+    except Exception:
+        local_today = dt.date.today()
+
+    first_this_month = local_today.replace(day=1)
+    default_end = first_this_month - dt.timedelta(days=1)
+    default_start = default_end.replace(day=1)
+
+    symbol_filter = (request.args.get("symbol") or "SNDK").strip().upper()
+    asset_filter = (request.args.get("asset") or "OPTION").strip().upper()
+    start_raw = (request.args.get("start") or default_start.isoformat()).strip()
+    end_raw = (request.args.get("end") or default_end.isoformat()).strip()
+    include_only_closed = request.args.get("closed", "1") != "0"
+
+    start_date = _parse_iso_date(start_raw) or default_start
+    end_date = _parse_iso_date(end_raw) or default_end
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+
+    error = None
+    rows = []
+    totals = {
+        "count": 0,
+        "qty": 0.0,
+        "pnl": 0.0,
+        "net": 0.0,
+        "item_cashflow": 0.0,
+        "transfer_cashflow": 0.0,
+    }
+    by_symbol = {}
+    try:
+        for txn in fetch_transactions_one_year():
+            txn_date = _txn_date(txn, tz_name=tz_name)
+            if txn_date < start_date or txn_date > end_date:
+                continue
+
+            symbol = (_txn_symbol(txn) or "").upper()
+            if symbol_filter and symbol_filter not in symbol:
+                continue
+
+            asset_type = _txn_asset_type(txn)
+            if asset_filter != "ALL" and asset_type != asset_filter:
+                continue
+
+            is_closed_candidate = _include_in_closed_summary(txn)
+            if include_only_closed and not is_closed_candidate:
+                continue
+
+            item = txn.get("transactionItem", {}) or {}
+            instruction = _txn_instruction(txn)
+            qty = _txn_qty(txn)
+            pnl = _txn_pnl(txn)
+            net = _safe_float(txn.get("netAmount"))
+            item_cashflow = _compute_cashflow_from_item(txn)
+            transfer_cashflow = _compute_cashflow_from_transfers(txn)
+            fee_total = abs(_sum_numeric_values(txn.get("fees") or {})) + abs(_sum_numeric_values(item.get("fees") or {}))
+
+            row = {
+                "date": txn_date.isoformat(),
+                "symbol": symbol,
+                "assetType": asset_type,
+                "txnType": str(txn.get("transactionType") or "").strip().upper(),
+                "instruction": instruction,
+                "statusIncluded": is_closed_candidate,
+                "qty": qty,
+                "pnl": pnl,
+                "net": net,
+                "item_cashflow": item_cashflow,
+                "transfer_cashflow": transfer_cashflow,
+                "fees": fee_total,
+                "price": _safe_float(item.get("price")),
+                "item_amount": _safe_float(item.get("amount")),
+                "item_quantity": _safe_float(item.get("quantity")) or _safe_float(item.get("quantityNumber")),
+                "item_cost": _safe_float(item.get("cost")),
+                "transactionId": txn.get("transactionId"),
+            }
+            rows.append(row)
+
+            totals["count"] += 1
+            totals["qty"] += qty or 0.0
+            totals["pnl"] += pnl or 0.0
+            totals["net"] += net or 0.0
+            totals["item_cashflow"] += item_cashflow or 0.0
+            totals["transfer_cashflow"] += transfer_cashflow or 0.0
+
+            by_symbol.setdefault(symbol, 0.0)
+            by_symbol[symbol] += pnl or 0.0
+
+        rows.sort(key=lambda r: (r["date"], r["symbol"], str(r.get("instruction") or ""), str(r.get("transactionId") or "")))
+    except Exception as exc:
+        error = str(exc)
+
+    by_symbol_rows = [{"symbol": sym, "pnl": pnl} for sym, pnl in sorted(by_symbol.items(), key=lambda kv: kv[0])]
+    return render_template(
+        "txn_reconcile.html",
+        error=error,
+        rows=rows,
+        totals=totals,
+        by_symbol_rows=by_symbol_rows,
+        symbol_filter=symbol_filter,
+        asset_filter=asset_filter,
+        start=start_date.isoformat(),
+        end=end_date.isoformat(),
+        include_only_closed=include_only_closed,
+    )
+
+
 @app.route("/manual")
 def manual():
     return render_template("manual.html", manual_text=load_manual_text())

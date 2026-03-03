@@ -1,0 +1,161 @@
+{% extends "layout.html" %}
+{% block content %}
+  {% macro money(val) -%}
+    {%- set n = (val or 0)|float -%}
+    {%- if n < 0 -%}
+      -${{ "%.2f"|format(n|abs) }}
+    {%- else -%}
+      ${{ "%.2f"|format(n) }}
+    {%- endif -%}
+  {%- endmacro %}
+
+  <section class="hero">
+    <div>
+      <h1>Transaction Reconcile Debug</h1>
+      <p class="subtitle">Compare raw Schwab transaction cashflow fields against summary P/L math.</p>
+    </div>
+    <div class="pill">Debug</div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <form class="card form" method="get">
+    <div class="form-grid">
+      <label>
+        Symbol contains
+        <input name="symbol" value="{{ symbol_filter }}" placeholder="SNDK">
+      </label>
+      <label>
+        Asset
+        <select name="asset">
+          <option value="OPTION" {% if asset_filter == "OPTION" %}selected{% endif %}>OPTION</option>
+          <option value="STOCK" {% if asset_filter == "STOCK" %}selected{% endif %}>STOCK</option>
+          <option value="CASH" {% if asset_filter == "CASH" %}selected{% endif %}>CASH</option>
+          <option value="ALL" {% if asset_filter == "ALL" %}selected{% endif %}>ALL</option>
+        </select>
+      </label>
+      <label>
+        Start
+        <input type="date" name="start" value="{{ start }}">
+      </label>
+      <label>
+        End
+        <input type="date" name="end" value="{{ end }}">
+      </label>
+      <label>
+        Include
+        <select name="closed">
+          <option value="1" {% if include_only_closed %}selected{% endif %}>Closed-summary rows only</option>
+          <option value="0" {% if not include_only_closed %}selected{% endif %}>All matching transactions</option>
+        </select>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="button" type="submit">Run Reconcile</button>
+    </div>
+  </form>
+
+  <section class="card">
+    <div class="card-title">Totals</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Rows</th>
+            <th>Qty Sum</th>
+            <th>P/L Sum (chosen)</th>
+            <th>NetAmount Sum</th>
+            <th>Item Cashflow Sum</th>
+            <th>Transfer Cashflow Sum</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{{ totals.count }}</td>
+            <td>{{ "%.2f"|format(totals.qty) }}</td>
+            <td class="{% if totals.pnl > 0 %}pl-pos{% elif totals.pnl < 0 %}pl-neg{% endif %}">{{ money(totals.pnl) }}</td>
+            <td>{{ money(totals.net) }}</td>
+            <td>{{ money(totals.item_cashflow) }}</td>
+            <td>{{ money(totals.transfer_cashflow) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">By Symbol (chosen P/L)</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>P/L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in by_symbol_rows %}
+            <tr>
+              <td>{{ row.symbol }}</td>
+              <td class="{% if row.pnl > 0 %}pl-pos{% elif row.pnl < 0 %}pl-neg{% endif %}">{{ money(row.pnl) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="2">No symbol totals.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Transaction Rows</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Symbol</th>
+            <th>Txn Type</th>
+            <th>Instruction</th>
+            <th>Included</th>
+            <th>Qty</th>
+            <th>P/L (chosen)</th>
+            <th>netAmount</th>
+            <th>itemCashflow</th>
+            <th>transferCashflow</th>
+            <th>Fees</th>
+            <th>Price</th>
+            <th>item.amount</th>
+            <th>item.qty</th>
+            <th>item.cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td>{{ row.date }}</td>
+              <td>{{ row.symbol }}</td>
+              <td>{{ row.txnType }}</td>
+              <td>{{ row.instruction }}</td>
+              <td>{{ "yes" if row.statusIncluded else "no" }}</td>
+              <td>{{ "%.2f"|format(row.qty or 0) }}</td>
+              <td class="{% if row.pnl > 0 %}pl-pos{% elif row.pnl < 0 %}pl-neg{% endif %}">{{ money(row.pnl) }}</td>
+              <td>{{ money(row.net) }}</td>
+              <td>{{ money(row.item_cashflow) }}</td>
+              <td>{{ money(row.transfer_cashflow) }}</td>
+              <td>{{ money(row.fees) }}</td>
+              <td>{{ "%.4f"|format(row.price or 0) }}</td>
+              <td>{{ "%.4f"|format(row.item_amount or 0) }}</td>
+              <td>{{ "%.4f"|format(row.item_quantity or 0) }}</td>
+              <td>{{ money(row.item_cost) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="15">No matching transactions.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}
