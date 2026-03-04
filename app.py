@@ -1321,7 +1321,7 @@ def evaluate_position(pos, settings):
 
     if dte is not None and dte <= settings["dte_exit"]:
         action = "Close"
-        reasons.append(f"DTE threshold ({dte} days)")
+        reasons.append(f"Expires in {dte} days (threshold reached)")
 
     note = ""
     if settings.get("nova_judgment"):
