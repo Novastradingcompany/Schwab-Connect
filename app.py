@@ -1762,76 +1762,153 @@ def build_risk_summary(positions, cash_total=0.0):
     }
 
 
-def _option_intrinsic(opt_type, strike, underlying):
-    if opt_type == "CALL":
-        return max(0.0, underlying - strike)
-    if opt_type == "PUT":
-        return max(0.0, strike - underlying)
-    return 0.0
+def _norm_cdf(x):
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
-def build_option_open_rows(positions, quotes, underlying_quotes, step, span):
-    rows = []
-    levels = [i * step for i in range(-span, span + 1) if i != 0]
+def _bs_put_price(spot, strike, t_years, rate, sigma):
+    spot = max(_safe_float(spot) or 0.0, 0.01)
+    strike = max(_safe_float(strike) or 0.0, 0.01)
+    t_years = max(_safe_float(t_years) or 0.0, 0.0)
+    sigma = max(_safe_float(sigma) or 0.0, 0.0)
+    if t_years <= 0.0 or sigma <= 0.0:
+        return max(0.0, strike - spot)
+    sqrt_t = math.sqrt(t_years)
+    d1 = (math.log(spot / strike) + (rate + 0.5 * sigma * sigma) * t_years) / (sigma * sqrt_t)
+    d2 = d1 - sigma * sqrt_t
+    return max(0.0, (strike * math.exp(-rate * t_years) * _norm_cdf(-d2)) - (spot * _norm_cdf(-d1)))
+
+
+def _option_iv(quote, fallback=0.25):
+    iv = _safe_float(
+        (quote or {}).get("volatility")
+        or (quote or {}).get("volatilityInPercent")
+        or (quote or {}).get("iv")
+    )
+    if iv is None or iv <= 0:
+        return fallback
+    if iv > 1.0:
+        iv = iv / 100.0
+    return min(max(iv, 0.01), 5.0)
+
+
+def _put_intrinsic(spot, strike):
+    return max(0.0, strike - spot)
+
+
+def build_put_spread_open_rows(positions, quotes, underlying_quotes, step, span, pricing_mode="model"):
+    rate = _safe_float(os.getenv("RISK_FREE_RATE")) or 0.045
+    levels = [round(i * step, 2) for i in range(-span, span + 1)]
+    mode = (pricing_mode or "model").strip().lower()
+    if mode not in {"model", "expiry"}:
+        mode = "model"
+    grouped = {}
     for pos in positions:
         if pos.get("assetType") != "OPTION":
             continue
-        instrument = pos.get("instrument", {})
         symbol = pos.get("symbol")
+        if not symbol:
+            continue
+        instrument = pos.get("instrument", {}) or {}
         symbol_meta = parse_option_symbol(symbol)
         opt_type = (instrument.get("putCall") or instrument.get("optionType") or symbol_meta.get("type") or "").upper()
+        if opt_type != "PUT":
+            continue
         strike = _safe_float(instrument.get("strikePrice"))
         if strike is None:
             strike = _safe_float(symbol_meta.get("strike"))
         underlying = instrument.get("underlyingSymbol") or symbol_meta.get("underlying")
-        if strike is None or not underlying:
+        expiration = parse_expiration(instrument.get("expirationDate") or instrument.get("maturityDate")) or symbol_meta.get("expiry")
+        qty = _safe_float(pos.get("qty")) or 0.0
+        if strike is None or not underlying or expiration is None or qty == 0:
             continue
-
         avg_price = _safe_float(
             pos.get("avgPrice")
             or pos.get("averagePrice")
             or pos.get("averageLongPrice")
             or pos.get("averageShortPrice")
         ) or 0.0
-        qty = _safe_float(pos.get("qty")) or 0.0
-        cost_basis = avg_price * qty * 100
-
-        opt_quote = quotes.get(symbol, {})
-        mark = opt_quote.get("mark") or opt_quote.get("last") or opt_quote.get("bid") or opt_quote.get("ask") or 0.0
-        current_value = mark * qty * 100
-        current_pl = current_value - cost_basis
-        pl_pct = None
-        if cost_basis:
-            pl_pct = (current_pl / abs(cost_basis)) * 100
-
-        breakeven = strike + avg_price if opt_type == "CALL" else strike - avg_price
-        under_quote = underlying_quotes.get(underlying, {})
-        underlying_last = under_quote.get("last") or under_quote.get("mark") or under_quote.get("bid") or under_quote.get("ask")
-
-        pl_levels = {}
-        for delta in levels:
-            level_price = breakeven + delta
-            intrinsic = _option_intrinsic(opt_type, strike, level_price)
-            pl_levels[delta] = round((intrinsic * qty * 100) - cost_basis, 2)
-
-        rows.append({
+        quote = quotes.get(symbol, {}) or {}
+        mark = _safe_float(quote.get("mark") or quote.get("last") or quote.get("bid") or quote.get("ask")) or 0.0
+        leg = {
             "symbol": symbol,
-            "underlying": underlying,
-            "type": opt_type,
             "strike": strike,
             "qty": qty,
-            "side": "LONG" if qty >= 0 else "SHORT",
+            "remaining": abs(qty),
             "avg_price": avg_price,
             "mark": mark,
-            "cost_basis": round(cost_basis, 2),
-            "current_value": round(current_value, 2),
-            "current_pl": round(current_pl, 2),
-            "pl_pct": round(pl_pct, 2) if pl_pct is not None else None,
-            "breakeven": round(breakeven, 2),
-            "underlying_last": underlying_last,
-            "pl_levels": pl_levels,
-        })
+            "iv": _option_iv(quote),
+        }
+        key = (underlying, expiration.isoformat())
+        grouped.setdefault(key, {"shorts": [], "longs": []})
+        if qty < 0:
+            grouped[key]["shorts"].append(leg)
+        else:
+            grouped[key]["longs"].append(leg)
 
+    rows = []
+    for (underlying, expiry_iso), bucket in grouped.items():
+        shorts = sorted(bucket.get("shorts", []), key=lambda x: x["strike"], reverse=True)
+        longs = sorted(bucket.get("longs", []), key=lambda x: x["strike"], reverse=True)
+        expiry_date = parse_expiration(expiry_iso)
+        t_years = 0.0
+        if expiry_date:
+            t_years = max((expiry_date - dt.date.today()).days, 0) / 365.0
+        under_quote = underlying_quotes.get(underlying, {}) or {}
+        underlying_last = _safe_float(
+            under_quote.get("last") or under_quote.get("mark") or under_quote.get("bid") or under_quote.get("ask")
+        )
+
+        for short_leg in shorts:
+            while short_leg["remaining"] > 0:
+                candidates = [leg for leg in longs if leg["remaining"] > 0 and leg["strike"] < short_leg["strike"]]
+                if not candidates:
+                    break
+                long_leg = max(candidates, key=lambda x: x["strike"])
+                spread_qty = min(short_leg["remaining"], long_leg["remaining"])
+                short_leg["remaining"] -= spread_qty
+                long_leg["remaining"] -= spread_qty
+
+                entry_credit = short_leg["avg_price"] - long_leg["avg_price"]
+                current_spread_value = short_leg["mark"] - long_leg["mark"]
+                current_pl = (entry_credit - current_spread_value) * spread_qty * 100
+                entry_credit_total = entry_credit * spread_qty * 100
+                pl_pct = None
+                if entry_credit_total:
+                    pl_pct = (current_pl / abs(entry_credit_total)) * 100
+                breakeven = short_leg["strike"] - entry_credit
+
+                pl_levels = {}
+                for delta in levels:
+                    level_price = short_leg["strike"] + delta
+                    if mode == "expiry":
+                        short_val = _put_intrinsic(level_price, short_leg["strike"])
+                        long_val = _put_intrinsic(level_price, long_leg["strike"])
+                    else:
+                        short_val = _bs_put_price(level_price, short_leg["strike"], t_years, rate, short_leg["iv"])
+                        long_val = _bs_put_price(level_price, long_leg["strike"], t_years, rate, long_leg["iv"])
+                    spread_value = short_val - long_val
+                    pl_levels[delta] = round((entry_credit - spread_value) * spread_qty * 100, 2)
+
+                rows.append({
+                    "underlying": underlying,
+                    "expiry": expiry_iso,
+                    "short_symbol": short_leg["symbol"],
+                    "long_symbol": long_leg["symbol"],
+                    "short_strike": round(short_leg["strike"], 2),
+                    "long_strike": round(long_leg["strike"], 2),
+                    "width": round(short_leg["strike"] - long_leg["strike"], 2),
+                    "qty": round(spread_qty, 2),
+                    "entry_credit": round(entry_credit, 4),
+                    "mark_spread": round(current_spread_value, 4),
+                    "breakeven": round(breakeven, 2),
+                    "underlying_last": underlying_last,
+                    "current_pl": round(current_pl, 2),
+                    "pl_pct": round(pl_pct, 2) if pl_pct is not None else None,
+                    "pl_levels": pl_levels,
+                })
+
+    rows.sort(key=lambda r: (r["underlying"], r["expiry"], -r["short_strike"], -r["long_strike"]))
     return levels, rows
 
 
@@ -3016,6 +3093,9 @@ def options_open():
     error = None
     step = float(request.args.get("step", 1))
     span = int(request.args.get("span", 5))
+    pricing_mode = (request.args.get("mode", "model") or "model").strip().lower()
+    if pricing_mode not in {"model", "expiry"}:
+        pricing_mode = "model"
     levels = []
     rows = []
     try:
@@ -3035,7 +3115,9 @@ def options_open():
         })
         quotes = fetch_quotes(option_symbols)
         underlying_quotes = fetch_quotes(underlying_symbols)
-        levels, rows = build_option_open_rows(option_positions, quotes, underlying_quotes, step, span)
+        levels, rows = build_put_spread_open_rows(
+            option_positions, quotes, underlying_quotes, step, span, pricing_mode=pricing_mode
+        )
     except Exception as exc:
         error = str(exc)
 
@@ -3045,6 +3127,7 @@ def options_open():
         rows=rows,
         step=step,
         span=span,
+        pricing_mode=pricing_mode,
         error=error,
     )
 

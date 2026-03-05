@@ -3,7 +3,14 @@
   <section class="hero">
     <div>
       <h1>Open Options</h1>
-      <p class="subtitle">Live P/L with breakeven interval estimates (intrinsic-only).</p>
+      <p class="subtitle">
+        Live bull put spread P/L.
+        {% if pricing_mode == "expiry" %}
+          Scenario columns use expiration payoff values.
+        {% else %}
+          Scenario columns use Black-Scholes spread values around the short strike.
+        {% endif %}
+      </p>
     </div>
     <div class="pill">Live</div>
   </section>
@@ -22,6 +29,13 @@
         Range (+/- steps)
         <input type="number" step="1" min="1" name="span" value="{{ span }}">
       </label>
+      <label>
+        Scenario Pricing
+        <select name="mode">
+          <option value="model" {% if pricing_mode == "model" %}selected{% endif %}>Model (Black-Scholes)</option>
+          <option value="expiry" {% if pricing_mode == "expiry" %}selected{% endif %}>Expiration Payoff</option>
+        </select>
+      </label>
     </div>
     <div class="form-actions">
       <button class="button" type="submit">Update</button>
@@ -34,38 +48,41 @@
       <table>
         <thead>
           <tr>
-            <th>Symbol</th>
             <th>Underlying</th>
-            <th>Type</th>
-            <th>Side</th>
-            <th>Strike</th>
+            <th>Expiry</th>
+            <th>Short Put</th>
+            <th>Long Put</th>
+            <th>Short Strike</th>
+            <th>Long Strike</th>
+            <th>Width</th>
             <th>Qty</th>
-            <th>Avg Price</th>
-            <th>Mark</th>
-            <th>Cost Basis</th>
-            <th>Current Value</th>
+            <th>Entry Credit</th>
+            <th>Spread Mark</th>
             <th>Underlying Last</th>
             <th>Unrealized P/L</th>
             <th>P/L %</th>
             <th>Breakeven</th>
             {% for lvl in levels %}
-              <th>BE {{ "%+.2f"|format(lvl) }}</th>
+              <th>
+                {% if pricing_mode == "expiry" %}Expiry{% else %}Short{% endif %}
+                {{ "%+.2f"|format(lvl) }}
+              </th>
             {% endfor %}
           </tr>
         </thead>
         <tbody>
           {% for row in rows %}
             <tr class="{% if row.current_pl > 0 %}row-pl-pos{% elif row.current_pl < 0 %}row-pl-neg{% else %}row-pl-flat{% endif %}">
-              <td>{{ row.symbol }}</td>
               <td>{{ row.underlying }}</td>
-              <td>{{ row.type }}</td>
-              <td>{{ row.side }}</td>
-              <td>{{ row.strike }}</td>
+              <td>{{ row.expiry }}</td>
+              <td>{{ row.short_symbol }}</td>
+              <td>{{ row.long_symbol }}</td>
+              <td>{{ row.short_strike }}</td>
+              <td>{{ row.long_strike }}</td>
+              <td>{{ row.width }}</td>
               <td>{{ row.qty }}</td>
-              <td>${{ "%.2f"|format(row.avg_price) }}</td>
-              <td>${{ "%.2f"|format(row.mark) }}</td>
-              <td>${{ "%.2f"|format(row.cost_basis) }}</td>
-              <td>${{ "%.2f"|format(row.current_value) }}</td>
+              <td>${{ "%.4f"|format(row.entry_credit) }}</td>
+              <td>${{ "%.4f"|format(row.mark_spread) }}</td>
               <td>
                 {% if row.underlying_last is not none %}
                   ${{ "%.2f"|format(row.underlying_last) }}
@@ -88,7 +105,7 @@
               {% endfor %}
             </tr>
           {% else %}
-            <tr><td colspan="{{ 15 + levels|length }}">No option positions found.</td></tr>
+            <tr><td colspan="{{ 14 + levels|length }}">No vertical put spreads found.</td></tr>
           {% endfor %}
         </tbody>
       </table>
