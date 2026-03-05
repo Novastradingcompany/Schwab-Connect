@@ -1,0 +1,116 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Bull Put Spread Simulator</h1>
+      <p class="subtitle">Plan the trade before entry with a vertical scenario ladder.</p>
+    </div>
+    <div class="pill">Pre-Trade</div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <form class="card form" method="get">
+    <div class="form-grid">
+      <label>
+        Short Strike
+        <input type="number" step="0.01" name="short_strike" value="{{ short_strike }}" required>
+      </label>
+      <label>
+        Long Strike
+        <input type="number" step="0.01" name="long_strike" value="{{ long_strike }}" required>
+      </label>
+      <label>
+        Net Credit (per spread)
+        <input type="number" step="0.01" min="0" name="credit" value="{{ credit }}" required>
+      </label>
+      <label>
+        Contracts
+        <input type="number" step="1" min="1" name="contracts" value="{{ contracts }}" required>
+      </label>
+      <label>
+        DTE (model)
+        <input type="number" step="1" min="0" name="dte" value="{{ dte }}">
+      </label>
+      <label>
+        IV Short
+        <input type="number" step="0.01" min="0.01" name="iv_short" value="{{ iv_short }}">
+      </label>
+      <label>
+        IV Long
+        <input type="number" step="0.01" min="0.01" name="iv_long" value="{{ iv_long }}">
+      </label>
+      <label>
+        Risk-Free Rate
+        <input type="number" step="0.001" min="0" name="rate" value="{{ rate }}">
+      </label>
+      <label>
+        Price From
+        <input type="number" step="0.01" name="price_from" value="{{ price_from }}">
+      </label>
+      <label>
+        Price To
+        <input type="number" step="0.01" name="price_to" value="{{ price_to }}">
+      </label>
+      <label>
+        Price Step
+        <input type="number" step="0.01" min="0.01" name="price_step" value="{{ price_step }}">
+      </label>
+    </div>
+    <div class="form-actions">
+      <button class="button" type="submit">Run Simulation</button>
+    </div>
+  </form>
+
+  <section class="card">
+    <div class="card-title">Trade Summary</div>
+    <div class="kv-grid">
+      <div><strong>Spread:</strong> {{ short_strike }} / {{ long_strike }}</div>
+      <div><strong>Width:</strong> {{ "%.2f"|format(width) }}</div>
+      <div><strong>Credit:</strong> ${{ "%.2f"|format(credit) }}</div>
+      <div><strong>Contracts:</strong> {{ contracts }}</div>
+      <div><strong>Breakeven:</strong> ${{ "%.2f"|format(breakeven) }}</div>
+      <div><strong>Max Profit:</strong> <span class="pl-pos">${{ "%.2f"|format(max_profit) }}</span></div>
+      <div><strong>Max Loss:</strong> <span class="pl-neg">${{ "%.2f"|format(-max_loss) }}</span></div>
+      <div><strong>Model Inputs:</strong> DTE {{ dte }}, IVs {{ "%.2f"|format(iv_short) }}/{{ "%.2f"|format(iv_long) }}, r {{ "%.3f"|format(rate) }}</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Vertical Scenario Ladder</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Stock Price</th>
+            <th>Zone</th>
+            <th>Spread Value (Model)</th>
+            <th>P/L (Model)</th>
+            <th>Spread Value (Expiry)</th>
+            <th>P/L (Expiry)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <td>${{ "%.2f"|format(row.stock_price) }}</td>
+              <td>{{ row.zone }}</td>
+              <td>${{ "%.4f"|format(row.spread_value_model) }}</td>
+              <td class="{% if row.pnl_model > 0 %}pl-pos{% elif row.pnl_model < 0 %}pl-neg{% else %}pl-flat{% endif %}">
+                ${{ "%.2f"|format(row.pnl_model) }}
+              </td>
+              <td>${{ "%.4f"|format(row.spread_value_expiry) }}</td>
+              <td class="{% if row.pnl_expiry > 0 %}pl-pos{% elif row.pnl_expiry < 0 %}pl-neg{% else %}pl-flat{% endif %}">
+                ${{ "%.2f"|format(row.pnl_expiry) }}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6">No rows to display.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

@@ -3132,6 +3132,106 @@ def options_open():
     )
 
 
+@app.route("/spread-sim")
+def spread_sim():
+    error = None
+
+    short_strike = _safe_float(request.args.get("short_strike"))
+    long_strike = _safe_float(request.args.get("long_strike"))
+    credit = _safe_float(request.args.get("credit"))
+    contracts = int(_safe_float(request.args.get("contracts")) or 1)
+    dte = int(_safe_float(request.args.get("dte")) or 7)
+    iv_short = _safe_float(request.args.get("iv_short"))
+    iv_long = _safe_float(request.args.get("iv_long"))
+    rate = _safe_float(request.args.get("rate"))
+    price_step = _safe_float(request.args.get("price_step"))
+
+    short_strike = short_strike if short_strike is not None else 582.5
+    long_strike = long_strike if long_strike is not None else 580.0
+    credit = credit if credit is not None else 0.95
+    iv_short = iv_short if iv_short is not None else 0.25
+    iv_long = iv_long if iv_long is not None else 0.25
+    rate = rate if rate is not None else (_safe_float(os.getenv("RISK_FREE_RATE")) or 0.045)
+    price_step = price_step if price_step is not None and price_step > 0 else 0.5
+    contracts = max(1, contracts)
+    dte = max(0, dte)
+
+    width = short_strike - long_strike
+    if width <= 0:
+        error = "Long strike must be below short strike for a bull put spread."
+
+    span_pad = max(width * 2, 2.0)
+    price_from_default = short_strike + span_pad
+    price_to_default = long_strike - span_pad
+    price_from = _safe_float(request.args.get("price_from"))
+    price_to = _safe_float(request.args.get("price_to"))
+    price_from = price_from if price_from is not None else price_from_default
+    price_to = price_to if price_to is not None else price_to_default
+    if price_from < price_to:
+        price_from, price_to = price_to, price_from
+
+    breakeven = short_strike - credit
+    max_profit = credit * 100 * contracts
+    max_loss = max(width - credit, 0.0) * 100 * contracts
+    t_years = dte / 365.0
+
+    rows = []
+    price = price_from
+    for _ in range(1000):
+        if price < price_to - 1e-9:
+            break
+
+        short_exp = _put_intrinsic(price, short_strike)
+        long_exp = _put_intrinsic(price, long_strike)
+        spread_exp = short_exp - long_exp
+        pnl_exp = (credit - spread_exp) * 100 * contracts
+
+        short_model = _bs_put_price(price, short_strike, t_years, rate, iv_short)
+        long_model = _bs_put_price(price, long_strike, t_years, rate, iv_long)
+        spread_model = short_model - long_model
+        pnl_model = (credit - spread_model) * 100 * contracts
+
+        if price >= short_strike:
+            zone = "Max Profit Zone"
+        elif price <= long_strike:
+            zone = "Max Loss Zone"
+        elif price >= breakeven:
+            zone = "Profit Zone"
+        else:
+            zone = "Loss Zone"
+
+        rows.append({
+            "stock_price": round(price, 2),
+            "zone": zone,
+            "spread_value_model": round(spread_model, 4),
+            "pnl_model": round(pnl_model, 2),
+            "spread_value_expiry": round(spread_exp, 4),
+            "pnl_expiry": round(pnl_exp, 2),
+        })
+        price = round(price - price_step, 8)
+
+    return render_template(
+        "spread_sim.html",
+        error=error,
+        short_strike=short_strike,
+        long_strike=long_strike,
+        credit=credit,
+        contracts=contracts,
+        dte=dte,
+        iv_short=iv_short,
+        iv_long=iv_long,
+        rate=rate,
+        price_from=price_from,
+        price_to=price_to,
+        price_step=price_step,
+        width=round(width, 2),
+        breakeven=round(breakeven, 2),
+        max_profit=round(max_profit, 2),
+        max_loss=round(max_loss, 2),
+        rows=rows,
+    )
+
+
 @app.route("/summary")
 def summary():
     period = request.args.get("period", "month")

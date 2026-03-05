@@ -173,6 +173,12 @@ h1 {
   gap: 12px;
 }
 
+.kv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px 16px;
+}
+
 .metric-label {
   font-size: 12px;
   color: var(--ink-soft);
