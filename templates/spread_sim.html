@@ -5,7 +5,7 @@
       <h1>Bull Put Spread Simulator</h1>
       <p class="subtitle">Plan the trade before entry with a vertical scenario ladder.</p>
     </div>
-    <div class="pill">Pre-Trade</div>
+    <div class="pill">{{ symbol }} | {{ today }}</div>
   </section>
 
   {% if error %}
@@ -14,6 +14,10 @@
 
   <form class="card form" method="get">
     <div class="form-grid">
+      <label>
+        Symbol
+        <input type="text" name="symbol" value="{{ symbol }}" required>
+      </label>
       <label>
         Short Strike
         <input type="number" step="0.01" name="short_strike" value="{{ short_strike }}" required>
@@ -67,6 +71,8 @@
   <section class="card">
     <div class="card-title">Trade Summary</div>
     <div class="kv-grid">
+      <div><strong>Symbol:</strong> {{ symbol }}</div>
+      <div><strong>Date:</strong> {{ today }}</div>
       <div><strong>Spread:</strong> {{ short_strike }} / {{ long_strike }}</div>
       <div><strong>Width:</strong> {{ "%.2f"|format(width) }}</div>
       <div><strong>Credit:</strong> ${{ "%.2f"|format(credit) }}</div>

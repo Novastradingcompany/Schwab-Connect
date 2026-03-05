@@ -3135,6 +3135,8 @@ def options_open():
 @app.route("/spread-sim")
 def spread_sim():
     error = None
+    symbol = (request.args.get("symbol") or "SNDK").strip().upper() or "SNDK"
+    today = dt.date.today()
 
     short_strike = _safe_float(request.args.get("short_strike"))
     long_strike = _safe_float(request.args.get("long_strike"))
@@ -3213,6 +3215,8 @@ def spread_sim():
     return render_template(
         "spread_sim.html",
         error=error,
+        symbol=symbol,
+        today=today.isoformat(),
         short_strike=short_strike,
         long_strike=long_strike,
         credit=credit,
