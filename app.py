@@ -3159,10 +3159,19 @@ def spread_sim():
     price_step = price_step if price_step is not None and price_step > 0 else 0.5
     contracts = max(1, contracts)
     dte = max(0, dte)
+    t_years = dte / 365.0
 
     width = short_strike - long_strike
     if width <= 0:
         error = "Long strike must be below short strike for a bull put spread."
+
+    est_short = _bs_put_price(stock_price, short_strike, t_years, rate, iv_short)
+    est_long = _bs_put_price(stock_price, long_strike, t_years, rate, iv_long)
+    estimated_credit = max(est_short - est_long, 0.0)
+    credit_source = "manual"
+    if credit is None:
+        credit = round(estimated_credit, 4)
+        credit_source = "estimated"
 
     span_pad = max(width * 2, 2.0)
     price_from_default = short_strike + span_pad
@@ -3177,7 +3186,6 @@ def spread_sim():
     breakeven = short_strike - credit
     max_profit = credit * 100 * contracts
     max_loss = max(width - credit, 0.0) * 100 * contracts
-    t_years = dte / 365.0
 
     rows = []
     price = price_from
@@ -3223,6 +3231,8 @@ def spread_sim():
         short_strike=short_strike,
         long_strike=long_strike,
         credit=credit,
+        credit_source=credit_source,
+        estimated_credit=round(estimated_credit, 4),
         contracts=contracts,
         dte=dte,
         iv_short=iv_short,
