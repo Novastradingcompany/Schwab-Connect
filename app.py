@@ -3138,6 +3138,7 @@ def spread_sim():
     symbol = (request.args.get("symbol") or "SNDK").strip().upper() or "SNDK"
     today = dt.date.today()
 
+    stock_price = _safe_float(request.args.get("stock_price"))
     short_strike = _safe_float(request.args.get("short_strike"))
     long_strike = _safe_float(request.args.get("long_strike"))
     credit = _safe_float(request.args.get("credit"))
@@ -3150,6 +3151,7 @@ def spread_sim():
 
     short_strike = short_strike if short_strike is not None else 582.5
     long_strike = long_strike if long_strike is not None else 580.0
+    stock_price = stock_price if stock_price is not None else round((short_strike + long_strike) / 2.0, 2)
     credit = credit if credit is not None else 0.95
     iv_short = iv_short if iv_short is not None else 0.25
     iv_long = iv_long if iv_long is not None else 0.25
@@ -3217,6 +3219,7 @@ def spread_sim():
         error=error,
         symbol=symbol,
         today=today.isoformat(),
+        stock_price=stock_price,
         short_strike=short_strike,
         long_strike=long_strike,
         credit=credit,
