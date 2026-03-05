@@ -2,8 +2,8 @@
 {% block content %}
   <section class="hero">
     <div>
-      <h1>Bull Put Spread Simulator</h1>
-      <p class="subtitle">Plan the trade before entry with a vertical scenario ladder.</p>
+      <h1>Credit Spread Simulator</h1>
+      <p class="subtitle">Plan bull put or bear call trades before entry with a vertical scenario ladder.</p>
     </div>
     <div class="pill">{{ symbol }} | {{ today }}</div>
   </section>
@@ -19,15 +19,22 @@
         <input type="text" name="symbol" value="{{ symbol }}" required>
       </label>
       <label>
+        Spread Type
+        <select name="spread_type">
+          <option value="bull_put" {% if spread_type == "bull_put" %}selected{% endif %}>Bull Put (Put Credit)</option>
+          <option value="bear_call" {% if spread_type == "bear_call" %}selected{% endif %}>Bear Call (Call Credit)</option>
+        </select>
+      </label>
+      <label>
         Stock Value (Now)
         <input type="number" step="0.01" name="stock_price" value="{{ stock_price }}">
       </label>
       <label>
-        Short Strike (Sell)
+        Short Strike {% if spread_type == "bull_put" %}(Sell Put){% else %}(Sell Call){% endif %}
         <input type="number" step="0.01" name="short_strike" value="{{ short_strike }}" required>
       </label>
       <label>
-        Long Strike (Buy)
+        Long Strike {% if spread_type == "bull_put" %}(Buy Put){% else %}(Buy Call){% endif %}
         <input type="number" step="0.01" name="long_strike" value="{{ long_strike }}" required>
       </label>
       <label>
@@ -78,8 +85,9 @@
     <div class="kv-grid">
       <div><strong>Symbol:</strong> {{ symbol }}</div>
       <div><strong>Date:</strong> {{ today }}</div>
+      <div><strong>Spread Type:</strong> {% if spread_type == "bull_put" %}Bull Put{% else %}Bear Call{% endif %}</div>
       <div><strong>Stock Value:</strong> ${{ "%.2f"|format(stock_price) }}</div>
-      <div><strong>Spread:</strong> {{ short_strike }} / {{ long_strike }}</div>
+      <div><strong>Spread:</strong> {{ short_strike }} / {{ long_strike }} {% if spread_type == "bull_put" %}Put{% else %}Call{% endif %}</div>
       <div><strong>Width:</strong> {{ "%.2f"|format(width) }}</div>
       <div>
         <strong>Credit:</strong> ${{ "%.2f"|format(credit) }}
@@ -101,9 +109,29 @@
   <section class="card">
     <div class="card-title">Key Levels</div>
     <div class="kv-grid">
-      <div><strong>At or Above Short Strike ({{ "%.2f"|format(short_strike) }}):</strong> <span class="pl-pos">Max Profit ${{ "%.2f"|format(max_profit) }}</span></div>
+      <div>
+        <strong>
+          {% if spread_type == "bull_put" %}
+            At or Above Short Strike
+          {% else %}
+            At or Below Short Strike
+          {% endif %}
+          ({{ "%.2f"|format(short_strike) }}):
+        </strong>
+        <span class="pl-pos">Max Profit ${{ "%.2f"|format(max_profit) }}</span>
+      </div>
       <div><strong>At Breakeven ({{ "%.2f"|format(breakeven) }}):</strong> <span class="pl-flat">$0.00 at expiry</span></div>
-      <div><strong>At or Below Long Strike ({{ "%.2f"|format(long_strike) }}):</strong> <span class="pl-neg">Max Loss ${{ "%.2f"|format(-max_loss) }}</span></div>
+      <div>
+        <strong>
+          {% if spread_type == "bull_put" %}
+            At or Below Long Strike
+          {% else %}
+            At or Above Long Strike
+          {% endif %}
+          ({{ "%.2f"|format(long_strike) }}):
+        </strong>
+        <span class="pl-neg">Max Loss ${{ "%.2f"|format(-max_loss) }}</span>
+      </div>
     </div>
   </section>
 

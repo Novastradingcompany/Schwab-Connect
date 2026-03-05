@@ -1779,6 +1779,19 @@ def _bs_put_price(spot, strike, t_years, rate, sigma):
     return max(0.0, (strike * math.exp(-rate * t_years) * _norm_cdf(-d2)) - (spot * _norm_cdf(-d1)))
 
 
+def _bs_call_price(spot, strike, t_years, rate, sigma):
+    spot = max(_safe_float(spot) or 0.0, 0.01)
+    strike = max(_safe_float(strike) or 0.0, 0.01)
+    t_years = max(_safe_float(t_years) or 0.0, 0.0)
+    sigma = max(_safe_float(sigma) or 0.0, 0.0)
+    if t_years <= 0.0 or sigma <= 0.0:
+        return max(0.0, spot - strike)
+    sqrt_t = math.sqrt(t_years)
+    d1 = (math.log(spot / strike) + (rate + 0.5 * sigma * sigma) * t_years) / (sigma * sqrt_t)
+    d2 = d1 - sigma * sqrt_t
+    return max(0.0, (spot * _norm_cdf(d1)) - (strike * math.exp(-rate * t_years) * _norm_cdf(d2)))
+
+
 def _option_iv(quote, fallback=0.25):
     iv = _safe_float(
         (quote or {}).get("volatility")
@@ -1794,6 +1807,10 @@ def _option_iv(quote, fallback=0.25):
 
 def _put_intrinsic(spot, strike):
     return max(0.0, strike - spot)
+
+
+def _call_intrinsic(spot, strike):
+    return max(0.0, spot - strike)
 
 
 def build_put_spread_open_rows(positions, quotes, underlying_quotes, step, span, pricing_mode="model"):
@@ -3137,6 +3154,9 @@ def spread_sim():
     error = None
     symbol = (request.args.get("symbol") or "SNDK").strip().upper() or "SNDK"
     today = dt.date.today()
+    spread_type = (request.args.get("spread_type") or "bull_put").strip().lower()
+    if spread_type not in {"bull_put", "bear_call"}:
+        spread_type = "bull_put"
 
     stock_price = _safe_float(request.args.get("stock_price"))
     short_strike = _safe_float(request.args.get("short_strike"))
@@ -3149,8 +3169,10 @@ def spread_sim():
     rate = _safe_float(request.args.get("rate"))
     price_step = _safe_float(request.args.get("price_step"))
 
-    short_strike = short_strike if short_strike is not None else 582.5
-    long_strike = long_strike if long_strike is not None else 580.0
+    short_default = 582.5 if spread_type == "bull_put" else 602.5
+    long_default = 580.0 if spread_type == "bull_put" else 605.0
+    short_strike = short_strike if short_strike is not None else short_default
+    long_strike = long_strike if long_strike is not None else long_default
     stock_price = stock_price if stock_price is not None else round((short_strike + long_strike) / 2.0, 2)
     credit = credit if credit is not None else 0.95
     iv_short = iv_short if iv_short is not None else 0.25
@@ -3161,12 +3183,21 @@ def spread_sim():
     dte = max(0, dte)
     t_years = dte / 365.0
 
-    width = short_strike - long_strike
-    if width <= 0:
-        error = "Long strike must be below short strike for a bull put spread."
+    if spread_type == "bull_put":
+        width = short_strike - long_strike
+        if width <= 0:
+            error = "For Bull Put, long strike must be below short strike."
+    else:
+        width = long_strike - short_strike
+        if width <= 0:
+            error = "For Bear Call, long strike must be above short strike."
 
-    est_short = _bs_put_price(stock_price, short_strike, t_years, rate, iv_short)
-    est_long = _bs_put_price(stock_price, long_strike, t_years, rate, iv_long)
+    if spread_type == "bull_put":
+        est_short = _bs_put_price(stock_price, short_strike, t_years, rate, iv_short)
+        est_long = _bs_put_price(stock_price, long_strike, t_years, rate, iv_long)
+    else:
+        est_short = _bs_call_price(stock_price, short_strike, t_years, rate, iv_short)
+        est_long = _bs_call_price(stock_price, long_strike, t_years, rate, iv_long)
     estimated_credit = max(est_short - est_long, 0.0)
     credit_source = "manual"
     if credit is None:
@@ -3174,8 +3205,10 @@ def spread_sim():
         credit_source = "estimated"
 
     span_pad = max(width * 2, 2.0)
-    price_from_default = short_strike + span_pad
-    price_to_default = long_strike - span_pad
+    higher_strike = max(short_strike, long_strike)
+    lower_strike = min(short_strike, long_strike)
+    price_from_default = higher_strike + span_pad
+    price_to_default = lower_strike - span_pad
     price_from = _safe_float(request.args.get("price_from"))
     price_to = _safe_float(request.args.get("price_to"))
     price_from = price_from if price_from is not None else price_from_default
@@ -3183,7 +3216,10 @@ def spread_sim():
     if price_from < price_to:
         price_from, price_to = price_to, price_from
 
-    breakeven = short_strike - credit
+    if spread_type == "bull_put":
+        breakeven = short_strike - credit
+    else:
+        breakeven = short_strike + credit
     max_profit = credit * 100 * contracts
     max_loss = max(width - credit, 0.0) * 100 * contracts
 
@@ -3193,24 +3229,42 @@ def spread_sim():
         if price < price_to - 1e-9:
             break
 
-        short_exp = _put_intrinsic(price, short_strike)
-        long_exp = _put_intrinsic(price, long_strike)
+        if spread_type == "bull_put":
+            short_exp = _put_intrinsic(price, short_strike)
+            long_exp = _put_intrinsic(price, long_strike)
+        else:
+            short_exp = _call_intrinsic(price, short_strike)
+            long_exp = _call_intrinsic(price, long_strike)
         spread_exp = short_exp - long_exp
         pnl_exp = (credit - spread_exp) * 100 * contracts
 
-        short_model = _bs_put_price(price, short_strike, t_years, rate, iv_short)
-        long_model = _bs_put_price(price, long_strike, t_years, rate, iv_long)
+        if spread_type == "bull_put":
+            short_model = _bs_put_price(price, short_strike, t_years, rate, iv_short)
+            long_model = _bs_put_price(price, long_strike, t_years, rate, iv_long)
+        else:
+            short_model = _bs_call_price(price, short_strike, t_years, rate, iv_short)
+            long_model = _bs_call_price(price, long_strike, t_years, rate, iv_long)
         spread_model = short_model - long_model
         pnl_model = (credit - spread_model) * 100 * contracts
 
-        if price >= short_strike:
-            zone = "Max Profit Zone"
-        elif price <= long_strike:
-            zone = "Max Loss Zone"
-        elif price >= breakeven:
-            zone = "Profit Zone"
+        if spread_type == "bull_put":
+            if price >= short_strike:
+                zone = "Max Profit Zone"
+            elif price <= long_strike:
+                zone = "Max Loss Zone"
+            elif price >= breakeven:
+                zone = "Profit Zone"
+            else:
+                zone = "Loss Zone"
         else:
-            zone = "Loss Zone"
+            if price <= short_strike:
+                zone = "Max Profit Zone"
+            elif price >= long_strike:
+                zone = "Max Loss Zone"
+            elif price <= breakeven:
+                zone = "Profit Zone"
+            else:
+                zone = "Loss Zone"
 
         rows.append({
             "stock_price": round(price, 2),
@@ -3225,6 +3279,7 @@ def spread_sim():
     return render_template(
         "spread_sim.html",
         error=error,
+        spread_type=spread_type,
         symbol=symbol,
         today=today.isoformat(),
         stock_price=stock_price,
