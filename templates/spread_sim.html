@@ -5,7 +5,7 @@
       <h1>Bull Put Spread Simulator</h1>
       <p class="subtitle">Plan the trade before entry with a vertical scenario ladder.</p>
     </div>
-    <div class="pill">{{ symbol }} | {{ today }} | Stock ${{ "%.2f"|format(stock_price) }}</div>
+    <div class="pill">{{ symbol }} | {{ today }}</div>
   </section>
 
   {% if error %}
@@ -95,6 +95,15 @@
       <div><strong>Max Profit:</strong> <span class="pl-pos">${{ "%.2f"|format(max_profit) }}</span></div>
       <div><strong>Max Loss:</strong> <span class="pl-neg">${{ "%.2f"|format(-max_loss) }}</span></div>
       <div><strong>Model Inputs:</strong> DTE {{ dte }}, IVs {{ "%.2f"|format(iv_short) }}/{{ "%.2f"|format(iv_long) }}, r {{ "%.3f"|format(rate) }}</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Key Levels</div>
+    <div class="kv-grid">
+      <div><strong>At or Above Short Strike ({{ "%.2f"|format(short_strike) }}):</strong> <span class="pl-pos">Max Profit ${{ "%.2f"|format(max_profit) }}</span></div>
+      <div><strong>At Breakeven ({{ "%.2f"|format(breakeven) }}):</strong> <span class="pl-flat">$0.00 at expiry</span></div>
+      <div><strong>At or Below Long Strike ({{ "%.2f"|format(long_strike) }}):</strong> <span class="pl-neg">Max Loss ${{ "%.2f"|format(-max_loss) }}</span></div>
     </div>
   </section>
 
