@@ -3501,13 +3501,32 @@ def tools():
     if request.args.get("show_token_b64") == "1":
         try:
             token_path = os.getenv("TOKEN_PATH", "token.json")
-            if not os.path.exists(token_path):
-                raise RuntimeError("No token file found on this runtime.")
-            with open(token_path, "r", encoding="utf-8") as f:
-                raw_token = f.read()
-            payload = _parse_token_payload(raw_token)
+            raw_file = None
+            if os.path.exists(token_path):
+                try:
+                    with open(token_path, "r", encoding="utf-8") as f:
+                        raw_file = f.read()
+                except Exception:
+                    raw_file = None
+
+            token_json = os.getenv("TOKEN_JSON")
+            token_b64 = os.getenv("TOKEN_JSON_B64")
+            decoded_b64 = None
+            if token_b64:
+                try:
+                    decoded_b64 = base64.b64decode(token_b64).decode("utf-8")
+                except Exception as exc:
+                    raise RuntimeError(f"TOKEN_JSON_B64 is not valid base64/utf-8: {exc}") from exc
+
+            payload = _best_token_candidate(
+                [
+                    _parse_token_payload(raw_file),
+                    _parse_token_payload(token_json),
+                    _parse_token_payload(decoded_b64),
+                ]
+            )
             if not payload:
-                raise RuntimeError("Token file is not valid JSON.")
+                raise RuntimeError("No usable token found in token file, TOKEN_JSON, or TOKEN_JSON_B64.")
             token_b64_for_render = base64.b64encode(
                 payload["raw"].encode("utf-8")
             ).decode("ascii")
