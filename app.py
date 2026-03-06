@@ -3162,6 +3162,10 @@ def spread_sim():
     short_strike = _safe_float(request.args.get("short_strike"))
     long_strike = _safe_float(request.args.get("long_strike"))
     credit = _safe_float(request.args.get("credit"))
+    fill_mode = (request.args.get("fill_mode") or "mid").strip().lower()
+    if fill_mode not in {"mid", "natural"}:
+        fill_mode = "mid"
+    slippage = _safe_float(request.args.get("slippage"))
     contracts = int(_safe_float(request.args.get("contracts")) or 1)
     dte = int(_safe_float(request.args.get("dte")) or 7)
     iv_short = _safe_float(request.args.get("iv_short"))
@@ -3179,6 +3183,7 @@ def spread_sim():
     iv_long = iv_long if iv_long is not None else 0.25
     rate = rate if rate is not None else (_safe_float(os.getenv("RISK_FREE_RATE")) or 0.045)
     price_step = price_step if price_step is not None and price_step > 0 else 0.5
+    slippage = slippage if slippage is not None and slippage >= 0 else 0.05
     contracts = max(1, contracts)
     dte = max(0, dte)
     t_years = dte / 365.0
@@ -3199,10 +3204,12 @@ def spread_sim():
         est_short = _bs_call_price(stock_price, short_strike, t_years, rate, iv_short)
         est_long = _bs_call_price(stock_price, long_strike, t_years, rate, iv_long)
     estimated_credit = max(est_short - est_long, 0.0)
+    quoted_credit = credit
     credit_source = "manual"
-    if credit is None:
-        credit = round(estimated_credit, 4)
+    if quoted_credit is None:
+        quoted_credit = round(estimated_credit, 4)
         credit_source = "estimated"
+    entry_credit = quoted_credit if fill_mode == "mid" else max(quoted_credit - slippage, 0.0)
 
     span_pad = max(width * 2, 2.0)
     higher_strike = max(short_strike, long_strike)
@@ -3217,11 +3224,21 @@ def spread_sim():
         price_from, price_to = price_to, price_from
 
     if spread_type == "bull_put":
-        breakeven = short_strike - credit
+        breakeven = short_strike - entry_credit
     else:
-        breakeven = short_strike + credit
-    max_profit = credit * 100 * contracts
-    max_loss = max(width - credit, 0.0) * 100 * contracts
+        breakeven = short_strike + entry_credit
+    max_profit = entry_credit * 100 * contracts
+    max_loss = max(width - entry_credit, 0.0) * 100 * contracts
+
+    strike_buffer_pct = None
+    if stock_price and stock_price > 0:
+        strike_buffer_pct = abs(stock_price - short_strike) / stock_price * 100.0
+    risk_warning = None
+    if strike_buffer_pct is not None and strike_buffer_pct <= 2.0:
+        risk_warning = (
+            f"Short strike is only {strike_buffer_pct:.2f}% from spot; "
+            "assignment/defense risk is elevated."
+        )
 
     rows = []
     price = price_from
@@ -3236,7 +3253,7 @@ def spread_sim():
             short_exp = _call_intrinsic(price, short_strike)
             long_exp = _call_intrinsic(price, long_strike)
         spread_exp = short_exp - long_exp
-        pnl_exp = (credit - spread_exp) * 100 * contracts
+        pnl_exp = (entry_credit - spread_exp) * 100 * contracts
 
         if spread_type == "bull_put":
             short_model = _bs_put_price(price, short_strike, t_years, rate, iv_short)
@@ -3245,7 +3262,7 @@ def spread_sim():
             short_model = _bs_call_price(price, short_strike, t_years, rate, iv_short)
             long_model = _bs_call_price(price, long_strike, t_years, rate, iv_long)
         spread_model = short_model - long_model
-        pnl_model = (credit - spread_model) * 100 * contracts
+        pnl_model = (entry_credit - spread_model) * 100 * contracts
 
         if spread_type == "bull_put":
             if price >= short_strike:
@@ -3285,8 +3302,11 @@ def spread_sim():
         stock_price=stock_price,
         short_strike=short_strike,
         long_strike=long_strike,
-        credit=credit,
+        credit=quoted_credit,
+        entry_credit=round(entry_credit, 4),
         credit_source=credit_source,
+        fill_mode=fill_mode,
+        slippage=slippage,
         estimated_credit=round(estimated_credit, 4),
         contracts=contracts,
         dte=dte,
@@ -3300,6 +3320,8 @@ def spread_sim():
         breakeven=round(breakeven, 2),
         max_profit=round(max_profit, 2),
         max_loss=round(max_loss, 2),
+        strike_buffer_pct=(round(strike_buffer_pct, 2) if strike_buffer_pct is not None else None),
+        risk_warning=risk_warning,
         rows=rows,
     )
 
