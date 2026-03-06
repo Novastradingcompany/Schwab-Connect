@@ -65,6 +65,7 @@ _MONITOR_LOCK = threading.Lock()
 NOVA_OPTIONS_RESPONSE = None
 NOVA_OPTIONS_ERROR = None
 WATCHLIST_PATH = _data_file("watchlist.json")
+WATCHLIST_NOTES_PATH = _data_file("watchlist_notes.json")
 TICKETS_PATH = _data_file("tickets.json")
 TRADE_JOURNAL_PATH = _data_file("trade_journal.json")
 MONITOR_STATE_PATH = _data_file("monitor_state.json")
@@ -647,6 +648,23 @@ def load_watchlist():
 
 def save_watchlist(data):
     with open(WATCHLIST_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def load_watchlist_notes():
+    if not os.path.exists(WATCHLIST_NOTES_PATH):
+        save_watchlist_notes({})
+        return {}
+    try:
+        with open(WATCHLIST_NOTES_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_watchlist_notes(data):
+    with open(WATCHLIST_NOTES_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 
@@ -2736,6 +2754,7 @@ def watchlist():
     error = None
     results = []
     watchlist_symbols = load_watchlist()
+    watchlist_notes = load_watchlist_notes()
 
     if request.method == "POST":
         action = request.form.get("action", "")
@@ -2752,6 +2771,9 @@ def watchlist():
             if symbol in watchlist_symbols:
                 watchlist_symbols = [s for s in watchlist_symbols if s != symbol]
                 save_watchlist(watchlist_symbols)
+                if symbol in watchlist_notes:
+                    watchlist_notes.pop(symbol, None)
+                    save_watchlist_notes(watchlist_notes)
             return redirect(url_for("watchlist"))
 
         if action == "scan":
@@ -2795,6 +2817,7 @@ def watchlist():
     return render_template(
         "watchlist.html",
         watchlist=watchlist_symbols,
+        watchlist_notes=watchlist_notes,
         results=results,
         error=error,
     )
@@ -3149,29 +3172,34 @@ def options_open():
     )
 
 
-@app.route("/spread-sim")
+@app.route("/spread-sim", methods=["GET", "POST"])
 def spread_sim():
-    error = None
-    symbol = (request.args.get("symbol") or "SNDK").strip().upper() or "SNDK"
+    error = (request.args.get("error") or "").strip() or None
+    info = (request.args.get("info") or "").strip()
+    val = request.values.get
+    symbol = (val("symbol") or "SNDK").strip().upper() or "SNDK"
     today = dt.date.today()
-    spread_type = (request.args.get("spread_type") or "bull_put").strip().lower()
+    spread_type = (val("spread_type") or "bull_put").strip().lower()
     if spread_type not in {"bull_put", "bear_call"}:
         spread_type = "bull_put"
 
-    stock_price = _safe_float(request.args.get("stock_price"))
-    short_strike = _safe_float(request.args.get("short_strike"))
-    long_strike = _safe_float(request.args.get("long_strike"))
-    credit = _safe_float(request.args.get("credit"))
-    fill_mode = (request.args.get("fill_mode") or "mid").strip().lower()
+    stock_price = _safe_float(val("stock_price"))
+    short_strike = _safe_float(val("short_strike"))
+    long_strike = _safe_float(val("long_strike"))
+    credit = _safe_float(val("credit"))
+    fill_mode = (val("fill_mode") or "mid").strip().lower()
     if fill_mode not in {"mid", "natural"}:
         fill_mode = "mid"
-    slippage = _safe_float(request.args.get("slippage"))
-    contracts = int(_safe_float(request.args.get("contracts")) or 1)
-    dte = int(_safe_float(request.args.get("dte")) or 7)
-    iv_short = _safe_float(request.args.get("iv_short"))
-    iv_long = _safe_float(request.args.get("iv_long"))
-    rate = _safe_float(request.args.get("rate"))
-    price_step = _safe_float(request.args.get("price_step"))
+    preset = (val("preset") or "custom").strip().lower()
+    if preset not in {"custom", "conservative", "income", "high_pop"}:
+        preset = "custom"
+    slippage = _safe_float(val("slippage"))
+    contracts = int(_safe_float(val("contracts")) or 1)
+    dte = int(_safe_float(val("dte")) or 7)
+    iv_short = _safe_float(val("iv_short"))
+    iv_long = _safe_float(val("iv_long"))
+    rate = _safe_float(val("rate"))
+    price_step = _safe_float(val("price_step"))
 
     short_default = 582.5 if spread_type == "bull_put" else 602.5
     long_default = 580.0 if spread_type == "bull_put" else 605.0
@@ -3184,6 +3212,19 @@ def spread_sim():
     rate = rate if rate is not None else (_safe_float(os.getenv("RISK_FREE_RATE")) or 0.045)
     price_step = price_step if price_step is not None and price_step > 0 else 0.5
     slippage = slippage if slippage is not None and slippage >= 0 else 0.05
+
+    preset_defaults = {
+        "conservative": {"fill_mode": "natural", "slippage": 0.10, "dte": 30, "contracts": 1},
+        "income": {"fill_mode": "mid", "slippage": 0.05, "dte": 14, "contracts": 1},
+        "high_pop": {"fill_mode": "natural", "slippage": 0.08, "dte": 21, "contracts": 1},
+    }
+    if preset in preset_defaults:
+        defaults = preset_defaults[preset]
+        fill_mode = defaults["fill_mode"]
+        slippage = defaults["slippage"]
+        dte = defaults["dte"]
+        contracts = defaults["contracts"]
+
     contracts = max(1, contracts)
     dte = max(0, dte)
     t_years = dte / 365.0
@@ -3239,6 +3280,85 @@ def spread_sim():
             f"Short strike is only {strike_buffer_pct:.2f}% from spot; "
             "assignment/defense risk is elevated."
         )
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip().lower()
+        if action in {"export_watchlist", "export_ticket"}:
+            params = {
+                "symbol": symbol,
+                "spread_type": spread_type,
+                "stock_price": stock_price,
+                "short_strike": short_strike,
+                "long_strike": long_strike,
+                "credit": quoted_credit,
+                "fill_mode": fill_mode,
+                "preset": preset,
+                "slippage": slippage,
+                "contracts": contracts,
+                "dte": dte,
+                "iv_short": iv_short,
+                "iv_long": iv_long,
+                "rate": rate,
+                "price_step": price_step,
+                "price_from": _safe_float(val("price_from")) if _safe_float(val("price_from")) is not None else price_from_default,
+                "price_to": _safe_float(val("price_to")) if _safe_float(val("price_to")) is not None else price_to_default,
+            }
+            try:
+                if action == "export_watchlist":
+                    watch = set(load_watchlist())
+                    watch_notes = load_watchlist_notes()
+                    before = len(watch)
+                    watch.add(symbol)
+                    save_watchlist(sorted(watch))
+                    watch_notes[symbol] = (
+                        f"Preset={preset}; Type={spread_type}; Fill={fill_mode}; "
+                        f"Credit={entry_credit:.2f}; DTE={dte}; "
+                        f"Strikes={short_strike:.2f}/{long_strike:.2f}"
+                    )
+                    save_watchlist_notes(watch_notes)
+                    added = len(watch) - before
+                    info = f"Watchlist updated: {'added' if added else 'already had'} {symbol}."
+                else:
+                    expiry = (today + dt.timedelta(days=dte)).isoformat()
+                    trade_text = (
+                        f"SELL {short_strike:.2f} PUT / BUY {long_strike:.2f} PUT"
+                        if spread_type == "bull_put"
+                        else f"SELL {short_strike:.2f} CALL / BUY {long_strike:.2f} CALL"
+                    )
+                    trade_row = {
+                        "Trade": trade_text,
+                        "Credit (Realistic)": round(entry_credit * 100.0, 2),
+                        "Max Loss": round(max_loss, 2),
+                        "Source": "Spread Simulator",
+                    }
+                    ticket = build_ticket(symbol, spread_type, expiry, trade_row)
+                    ticket["source"] = "spread_simulator"
+                    ticket["assumptions"] = {
+                        "preset": preset,
+                        "fill_mode": fill_mode,
+                        "slippage": round(slippage, 2),
+                        "dte": dte,
+                        "iv_short": round(iv_short, 4),
+                        "iv_long": round(iv_long, 4),
+                        "rate": round(rate, 4),
+                        "entry_credit_per_spread": round(entry_credit, 4),
+                        "quoted_credit_per_spread": round(quoted_credit, 4),
+                        "breakeven": round(breakeven, 2),
+                        "max_profit": round(max_profit, 2),
+                        "max_loss": round(max_loss, 2),
+                    }
+                    tickets_data = load_tickets()
+                    tickets_data.insert(0, ticket)
+                    save_tickets(tickets_data)
+                    info = f"Ticket created from spread sim: {ticket['id']}."
+            except Exception as exc:
+                error = str(exc)
+            redirect_params = dict(params)
+            if info:
+                redirect_params["info"] = info
+            if error:
+                redirect_params["error"] = error
+            return redirect(url_for("spread_sim", **redirect_params))
 
     rows = []
     price = price_from
@@ -3296,9 +3416,11 @@ def spread_sim():
     return render_template(
         "spread_sim.html",
         error=error,
+        info=info,
         spread_type=spread_type,
         symbol=symbol,
         today=today.isoformat(),
+        preset=preset,
         stock_price=stock_price,
         short_strike=short_strike,
         long_strike=long_strike,

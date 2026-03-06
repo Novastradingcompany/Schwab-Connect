@@ -11,6 +11,9 @@
   {% if error %}
     <div class="card alert">{{ error }}</div>
   {% endif %}
+  {% if info %}
+    <div class="card">{{ info }}</div>
+  {% endif %}
 
   <form class="card form" method="get">
     <div class="form-grid">
@@ -23,6 +26,15 @@
         <select name="spread_type">
           <option value="bull_put" {% if spread_type == "bull_put" %}selected{% endif %}>Bull Put (Put Credit)</option>
           <option value="bear_call" {% if spread_type == "bear_call" %}selected{% endif %}>Bear Call (Call Credit)</option>
+        </select>
+      </label>
+      <label>
+        Preset
+        <select name="preset">
+          <option value="custom" {% if preset == "custom" %}selected{% endif %}>Custom</option>
+          <option value="conservative" {% if preset == "conservative" %}selected{% endif %}>Conservative</option>
+          <option value="income" {% if preset == "income" %}selected{% endif %}>Income</option>
+          <option value="high_pop" {% if preset == "high_pop" %}selected{% endif %}>High POP</option>
         </select>
       </label>
       <label>
@@ -87,6 +99,8 @@
     </div>
     <div class="form-actions">
       <button class="button" type="submit">Run Simulation</button>
+      <button class="button" type="submit" name="action" value="export_watchlist" formmethod="post">Export Setup to Watchlist</button>
+      <button class="button" type="submit" name="action" value="export_ticket" formmethod="post">Export Setup to Ticket</button>
       <button class="button no-print" type="button" onclick="window.print()">Print</button>
     </div>
   </form>
@@ -100,6 +114,7 @@
       <div><strong>Symbol:</strong> {{ symbol }}</div>
       <div><strong>Date:</strong> {{ today }}</div>
       <div><strong>Spread Type:</strong> {% if spread_type == "bull_put" %}Bull Put{% else %}Bear Call{% endif %}</div>
+      <div><strong>Preset:</strong> {{ preset }}</div>
       <div><strong>Stock Value:</strong> ${{ "{:,.2f}".format(stock_price) }}</div>
       <div><strong>Spread:</strong> {{ short_strike }} / {{ long_strike }} {% if spread_type == "bull_put" %}Put{% else %}Call{% endif %}</div>
       <div><strong>Width:</strong> {{ "%.2f"|format(width) }}</div>
@@ -125,8 +140,11 @@
   </section>
 
   <section class="card">
-    <div class="card-title">How This Is Calculated</div>
-    <div class="kv-grid">
+    <div class="form-actions">
+      <div class="card-title">How This Is Calculated</div>
+      <button id="calc-toggle" class="button" type="button" aria-expanded="true">Hide</button>
+    </div>
+    <div id="calc-content" class="kv-grid">
       <div><strong>P/L basis:</strong> Entry credit used minus modeled/expiry spread value.</div>
       <div><strong>Fill assumption:</strong> {{ "Mid uses quoted credit directly." if fill_mode == "mid" else "Natural uses quoted credit minus slippage." }}</div>
       <div><strong>Natural slippage:</strong> ${{ "{:,.2f}".format(slippage) }} per spread.</div>
@@ -198,4 +216,17 @@
       </table>
     </div>
   </section>
+  <script>
+    (function () {
+      const toggle = document.getElementById("calc-toggle");
+      const content = document.getElementById("calc-content");
+      if (!toggle || !content) return;
+      toggle.addEventListener("click", function () {
+        const isHidden = content.style.display === "none";
+        content.style.display = isHidden ? "" : "none";
+        toggle.textContent = isHidden ? "Hide" : "Unhide";
+        toggle.setAttribute("aria-expanded", isHidden ? "true" : "false");
+      });
+    })();
+  </script>
 {% endblock %}

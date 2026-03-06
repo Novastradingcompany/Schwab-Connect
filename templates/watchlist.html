@@ -27,6 +27,9 @@
       {% for sym in watchlist %}
         <div class="chip">
           <span>{{ sym }}</span>
+          {% if watchlist_notes.get(sym) %}
+            <span>{{ watchlist_notes.get(sym) }}</span>
+          {% endif %}
           <form method="post">
             <input type="hidden" name="action" value="remove">
             <input type="hidden" name="symbol" value="{{ sym }}">

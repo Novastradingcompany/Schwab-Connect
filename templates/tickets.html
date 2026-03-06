@@ -51,6 +51,11 @@
                 {% if ticket.trade %}
                   {{ ticket.trade.get("Trade") or ticket.trade.get("Put Spread") or ticket.trade.get("Call Spread") }}
                 {% endif %}
+                {% if ticket.assumptions %}
+                  <div>
+                    Preset {{ ticket.assumptions.get("preset") }} | Fill {{ ticket.assumptions.get("fill_mode") }} | DTE {{ ticket.assumptions.get("dte") }}
+                  </div>
+                {% endif %}
               </td>
               <td>
                 {% for leg in ticket.legs %}
