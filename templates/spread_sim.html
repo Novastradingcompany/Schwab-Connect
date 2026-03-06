@@ -100,23 +100,23 @@
       <div><strong>Symbol:</strong> {{ symbol }}</div>
       <div><strong>Date:</strong> {{ today }}</div>
       <div><strong>Spread Type:</strong> {% if spread_type == "bull_put" %}Bull Put{% else %}Bear Call{% endif %}</div>
-      <div><strong>Stock Value:</strong> ${{ "%.2f"|format(stock_price) }}</div>
+      <div><strong>Stock Value:</strong> ${{ "{:,.2f}".format(stock_price) }}</div>
       <div><strong>Spread:</strong> {{ short_strike }} / {{ long_strike }} {% if spread_type == "bull_put" %}Put{% else %}Call{% endif %}</div>
       <div><strong>Width:</strong> {{ "%.2f"|format(width) }}</div>
       <div>
-        <strong>Quoted Credit:</strong> ${{ "%.2f"|format(credit) }}
+        <strong>Quoted Credit:</strong> ${{ "{:,.2f}".format(credit) }}
         {% if credit_source == "estimated" %}
           (estimated)
         {% else %}
           (manual)
         {% endif %}
       </div>
-      <div><strong>Entry Credit Used:</strong> ${{ "%.2f"|format(entry_credit) }} ({{ "Mid" if fill_mode == "mid" else "Natural" }})</div>
-      <div><strong>Model Est. Credit:</strong> ${{ "%.4f"|format(estimated_credit) }}</div>
+      <div><strong>Entry Credit Used:</strong> ${{ "{:,.2f}".format(entry_credit) }} ({{ "Mid" if fill_mode == "mid" else "Natural" }})</div>
+      <div><strong>Model Est. Credit:</strong> ${{ "{:,.2f}".format(estimated_credit) }}</div>
       <div><strong>Contracts:</strong> {{ contracts }}</div>
-      <div><strong>Breakeven:</strong> ${{ "%.2f"|format(breakeven) }}</div>
-      <div><strong>Max Profit:</strong> <span class="pl-pos">${{ "%.2f"|format(max_profit) }}</span></div>
-      <div><strong>Max Loss:</strong> <span class="pl-neg">${{ "%.2f"|format(-max_loss) }}</span></div>
+      <div><strong>Breakeven:</strong> ${{ "{:,.2f}".format(breakeven) }}</div>
+      <div><strong>Max Profit:</strong> <span class="pl-pos">${{ "{:,.2f}".format(max_profit) }}</span></div>
+      <div><strong>Max Loss:</strong> <span class="pl-neg">${{ "{:,.2f}".format(-max_loss) }}</span></div>
       <div><strong>Model Inputs:</strong> DTE {{ dte }}, IVs {{ "%.2f"|format(iv_short) }}/{{ "%.2f"|format(iv_long) }}, r {{ "%.3f"|format(rate) }}</div>
       {% if strike_buffer_pct is not none %}
         <div><strong>Spot to Short Strike:</strong> {{ "%.2f"|format(strike_buffer_pct) }}%</div>
@@ -129,7 +129,7 @@
     <div class="kv-grid">
       <div><strong>P/L basis:</strong> Entry credit used minus modeled/expiry spread value.</div>
       <div><strong>Fill assumption:</strong> {{ "Mid uses quoted credit directly." if fill_mode == "mid" else "Natural uses quoted credit minus slippage." }}</div>
-      <div><strong>Natural slippage:</strong> ${{ "%.2f"|format(slippage) }} per spread.</div>
+      <div><strong>Natural slippage:</strong> ${{ "{:,.2f}".format(slippage) }} per spread.</div>
       <div><strong>Commissions/fees:</strong> Not included.</div>
     </div>
   </section>
@@ -146,7 +146,7 @@
           {% endif %}
           ({{ "%.2f"|format(short_strike) }}):
         </strong>
-        <span class="pl-pos">Max Profit ${{ "%.2f"|format(max_profit) }}</span>
+        <span class="pl-pos">Max Profit ${{ "{:,.2f}".format(max_profit) }}</span>
       </div>
       <div><strong>At Breakeven ({{ "%.2f"|format(breakeven) }}):</strong> <span class="pl-flat">$0.00 at expiry</span></div>
       <div>
@@ -158,7 +158,7 @@
           {% endif %}
           ({{ "%.2f"|format(long_strike) }}):
         </strong>
-        <span class="pl-neg">Max Loss ${{ "%.2f"|format(-max_loss) }}</span>
+        <span class="pl-neg">Max Loss ${{ "{:,.2f}".format(-max_loss) }}</span>
       </div>
     </div>
   </section>
@@ -180,15 +180,15 @@
         <tbody>
           {% for row in rows %}
             <tr>
-              <td>${{ "%.2f"|format(row.stock_price) }}</td>
+              <td>${{ "{:,.2f}".format(row.stock_price) }}</td>
               <td>{{ row.zone }}</td>
-              <td>${{ "%.4f"|format(row.spread_value_model) }}</td>
+              <td>${{ "{:,.2f}".format(row.spread_value_model) }}</td>
               <td class="{% if row.pnl_model > 0 %}pl-pos{% elif row.pnl_model < 0 %}pl-neg{% else %}pl-flat{% endif %}">
-                ${{ "%.2f"|format(row.pnl_model) }}
+                ${{ "{:,.2f}".format(row.pnl_model) }}
               </td>
-              <td>${{ "%.4f"|format(row.spread_value_expiry) }}</td>
+              <td>${{ "{:,.2f}".format(row.spread_value_expiry) }}</td>
               <td class="{% if row.pnl_expiry > 0 %}pl-pos{% elif row.pnl_expiry < 0 %}pl-neg{% else %}pl-flat{% endif %}">
-                ${{ "%.2f"|format(row.pnl_expiry) }}
+                ${{ "{:,.2f}".format(row.pnl_expiry) }}
               </td>
             </tr>
           {% else %}
