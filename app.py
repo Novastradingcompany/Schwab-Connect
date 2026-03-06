@@ -3476,6 +3476,8 @@ def tools():
     errors = load_error_log()
     status = None
     refresh_result = None
+    token_b64_for_render = None
+    token_b64_error = None
     email_test_result = None
     settings = load_settings()
     tz = request.args.get("tz")
@@ -3496,6 +3498,21 @@ def tools():
             refresh_result = {"ok": True, "status_code": response.status_code}
         except Exception as exc:
             refresh_result = {"ok": False, "error": str(exc)}
+    if request.args.get("show_token_b64") == "1":
+        try:
+            token_path = os.getenv("TOKEN_PATH", "token.json")
+            if not os.path.exists(token_path):
+                raise RuntimeError("No token file found on this runtime.")
+            with open(token_path, "r", encoding="utf-8") as f:
+                raw_token = f.read()
+            payload = _parse_token_payload(raw_token)
+            if not payload:
+                raise RuntimeError("Token file is not valid JSON.")
+            token_b64_for_render = base64.b64encode(
+                payload["raw"].encode("utf-8")
+            ).decode("ascii")
+        except Exception as exc:
+            token_b64_error = str(exc)
     if request.args.get("check_schwab") == "1":
         try:
             client = get_client()
@@ -3542,6 +3559,8 @@ def tools():
         errors=errors,
         status=status,
         refresh_result=refresh_result,
+        token_b64_for_render=token_b64_for_render,
+        token_b64_error=token_b64_error,
         email_test_result=email_test_result,
         token_status=token_status,
         monitor_status=monitor_status,
