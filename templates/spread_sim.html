@@ -130,6 +130,9 @@
       <div><strong>Model Est. Credit:</strong> ${{ "{:,.2f}".format(estimated_credit) }}</div>
       <div><strong>Contracts:</strong> {{ contracts }}</div>
       <div><strong>Breakeven:</strong> ${{ "{:,.2f}".format(breakeven) }}</div>
+      {% if pop_score is not none %}
+        <div><strong>POP Score:</strong> {{ "%.2f"|format(pop_score) }}%</div>
+      {% endif %}
       <div><strong>Max Profit:</strong> <span class="pl-pos">${{ "{:,.2f}".format(max_profit) }}</span></div>
       <div><strong>Max Loss:</strong> <span class="pl-neg">${{ "{:,.2f}".format(-max_loss) }}</span></div>
       <div><strong>Model Inputs:</strong> DTE {{ dte }}, IVs {{ "%.2f"|format(iv_short) }}/{{ "%.2f"|format(iv_long) }}, r {{ "%.3f"|format(rate) }}</div>
@@ -148,6 +151,7 @@
       <div><strong>P/L basis:</strong> Entry credit used minus modeled/expiry spread value.</div>
       <div><strong>Fill assumption:</strong> {{ "Mid uses quoted credit directly." if fill_mode == "mid" else "Natural uses quoted credit minus slippage." }}</div>
       <div><strong>Natural slippage:</strong> ${{ "{:,.2f}".format(slippage) }} per spread.</div>
+      <div><strong>POP model:</strong> Probability of expiry profit (stock beyond breakeven), using lognormal model with average IV.</div>
       <div><strong>Commissions/fees:</strong> Not included.</div>
     </div>
   </section>

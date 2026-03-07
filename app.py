@@ -3268,6 +3268,23 @@ def spread_sim():
         breakeven = short_strike - entry_credit
     else:
         breakeven = short_strike + entry_credit
+    pop_score = None
+    if t_years <= 0:
+        if spread_type == "bull_put":
+            pop_score = 1.0 if stock_price >= breakeven else 0.0
+        else:
+            pop_score = 1.0 if stock_price <= breakeven else 0.0
+    else:
+        sigma_pop = max((iv_short + iv_long) / 2.0, 0.0001)
+        spot_for_pop = max(stock_price, 0.01)
+        threshold = max(breakeven, 0.01)
+        denom = sigma_pop * math.sqrt(t_years)
+        d2_be = (math.log(spot_for_pop / threshold) + (rate - 0.5 * sigma_pop * sigma_pop) * t_years) / denom
+        if spread_type == "bull_put":
+            pop_score = _norm_cdf(d2_be)
+        else:
+            pop_score = _norm_cdf(-d2_be)
+        pop_score = min(max(pop_score, 0.0), 1.0)
     max_profit = entry_credit * 100 * contracts
     max_loss = max(width - entry_credit, 0.0) * 100 * contracts
 
@@ -3344,6 +3361,7 @@ def spread_sim():
                         "entry_credit_per_spread": round(entry_credit, 4),
                         "quoted_credit_per_spread": round(quoted_credit, 4),
                         "breakeven": round(breakeven, 2),
+                        "pop_score": round(pop_score * 100.0, 2) if pop_score is not None else None,
                         "max_profit": round(max_profit, 2),
                         "max_loss": round(max_loss, 2),
                     }
@@ -3442,6 +3460,7 @@ def spread_sim():
         breakeven=round(breakeven, 2),
         max_profit=round(max_profit, 2),
         max_loss=round(max_loss, 2),
+        pop_score=(round(pop_score * 100.0, 2) if pop_score is not None else None),
         strike_buffer_pct=(round(strike_buffer_pct, 2) if strike_buffer_pct is not None else None),
         risk_warning=risk_warning,
         rows=rows,
