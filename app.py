@@ -2739,9 +2739,43 @@ def alerts():
         rows = []
         error = str(exc)
 
+    def _fmt_num(value):
+        num = _safe_float(value)
+        return f"{num:,.2f}" if num is not None else ""
+
+    def _fmt_money(value):
+        num = _safe_float(value)
+        return f"${num:,.2f}" if num is not None else ""
+
+    def _fmt_pct(value):
+        num = _safe_float(value)
+        return f"{num:.2f}%" if num is not None else ""
+
+    display_rows = []
+    for row in rows:
+        quote = (row.get("quote") or {}) if isinstance(row, dict) else {}
+        display_rows.append({
+            "accountNumber": (row.get("accountNumber") if isinstance(row, dict) else ""),
+            "symbol": (row.get("symbol") if isinstance(row, dict) else ""),
+            "assetType": (row.get("assetType") if isinstance(row, dict) else ""),
+            "qty_fmt": _fmt_num(row.get("qty") if isinstance(row, dict) else None),
+            "market_value_fmt": _fmt_money(row.get("marketValue") if isinstance(row, dict) else None),
+            "pnl_fmt": _fmt_money(row.get("pnl") if isinstance(row, dict) else None),
+            "pnl_pct_fmt": _fmt_pct(row.get("pnl_pct") if isinstance(row, dict) else None),
+            "dte_fmt": _fmt_num(row.get("dte") if isinstance(row, dict) else None),
+            "last_fmt": _fmt_money(quote.get("last")),
+            "mark_fmt": _fmt_money(quote.get("mark")),
+            "delta_fmt": _fmt_num(quote.get("delta")),
+            "theta_fmt": _fmt_num(quote.get("theta")),
+            "iv_fmt": _fmt_num(quote.get("iv")),
+            "action": (row.get("action") if isinstance(row, dict) else ""),
+            "reasons": (row.get("reasons") if isinstance(row, dict) else ""),
+            "note": (row.get("note") if isinstance(row, dict) else ""),
+        })
+
     return render_template(
         "alerts.html",
-        rows=rows,
+        rows=display_rows,
         error=error,
         settings=settings,
         nova_models=_nova_model_options(settings.get("nova_model")),
