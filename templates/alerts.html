@@ -150,7 +150,7 @@
         </thead>
         <tbody>
           {% for row in rows %}
-            {% set quote = row.get("quote", {}) if row is mapping else {} %}
+            {% set quote = row.quote if row.quote is defined and row.quote else {} %}
             <tr>
               <td>{{ row.accountNumber }}</td>
               <td>{{ row.symbol }}</td>
