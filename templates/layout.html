@@ -19,23 +19,27 @@
       </div>
       {% if session.get("authed") %}
         <nav class="nav">
-          <a class="nav-link" href="{{ url_for('index') }}">Overview</a>
-          <a class="nav-link" href="{{ url_for('options_chain') }}">Options Chain</a>
-          <a class="nav-link" href="{{ url_for('watchlist') }}">Watchlist</a>
-          <a class="nav-link" href="{{ url_for('tickets') }}">Tickets</a>
-          <a class="nav-link" href="{{ url_for('risk_dashboard') }}">Risk</a>
-          <a class="nav-link" href="{{ url_for('options_open') }}">Open Options</a>
-          <a class="nav-link" href="{{ url_for('spread_sim') }}">Spread Sim</a>
-          <a class="nav-link" href="{{ url_for('summary') }}">Summary</a>
-          <a class="nav-link" href="{{ url_for('trade_journal') }}">Journal</a>
-          <a class="nav-link" href="{{ url_for('trade_stats') }}">Stats</a>
-          <a class="nav-link" href="{{ url_for('tools') }}">Tools</a>
-          <a class="nav-link" href="{{ url_for('positions') }}">Positions</a>
-          <a class="nav-link" href="{{ url_for('alerts') }}">Alerts</a>
-          <a class="nav-link" href="{{ url_for('movers_agent') }}">Movers Agent</a>
-          <a class="nav-link" href="{{ url_for('manual') }}">Manual</a>
-          <a class="nav-link" href="{{ url_for('nova_chat') }}">Nova</a>
-          <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+          <div class="nav-row">
+            <a class="nav-link nav-link-primary" href="{{ url_for('index') }}">Overview</a>
+            <a class="nav-link nav-link-primary" href="{{ url_for('options_chain') }}">Options Chain</a>
+            <a class="nav-link nav-link-primary" href="{{ url_for('options_open') }}">Open Options</a>
+            <a class="nav-link nav-link-primary" href="{{ url_for('positions') }}">Positions</a>
+            <a class="nav-link nav-link-primary" href="{{ url_for('alerts') }}">Alerts</a>
+            <a class="nav-link nav-link-primary" href="{{ url_for('watchlist') }}">Watchlist</a>
+            <a class="nav-link nav-link-primary" href="{{ url_for('movers_agent') }}">Movers Agent</a>
+            <a class="nav-link nav-link-primary" href="{{ url_for('nova_chat') }}">Nova</a>
+          </div>
+          <div class="nav-row nav-row-secondary">
+            <a class="nav-link" href="{{ url_for('spread_sim') }}">Spread Sim</a>
+            <a class="nav-link" href="{{ url_for('risk_dashboard') }}">Risk</a>
+            <a class="nav-link" href="{{ url_for('summary') }}">Summary</a>
+            <a class="nav-link" href="{{ url_for('trade_journal') }}">Journal</a>
+            <a class="nav-link" href="{{ url_for('trade_stats') }}">Stats</a>
+            <a class="nav-link" href="{{ url_for('tools') }}">Tools</a>
+            <a class="nav-link" href="{{ url_for('manual') }}">Manual</a>
+            <a class="nav-link" href="{{ url_for('tickets') }}">Tickets</a>
+            <a class="nav-link nav-link-logout" href="{{ url_for('logout') }}">Logout</a>
+          </div>
         </nav>
       {% endif %}
     </header>

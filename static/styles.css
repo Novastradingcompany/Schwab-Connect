@@ -40,8 +40,9 @@ body {
   top: 0;
   z-index: 2;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
   padding: 18px 28px;
   backdrop-filter: blur(14px);
   background: rgba(247, 242, 234, 0.82);
@@ -80,7 +81,18 @@ body {
 
 .nav {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nav-row {
+  display: flex;
+  gap: 10px 12px;
+  flex-wrap: wrap;
+}
+
+.nav-row-secondary {
+  justify-content: space-between;
 }
 
 .nav-link {
@@ -91,6 +103,16 @@ body {
   border: 1px solid rgba(0, 0, 0, 0.1);
   background: rgba(255, 255, 255, 0.6);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.nav-link-primary {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(159, 68, 41, 0.28);
+  font-weight: 600;
+}
+
+.nav-link-logout {
+  margin-left: auto;
 }
 
 .nav-link:hover {
@@ -416,8 +438,24 @@ th.sortable[data-sort-dir="desc"]::after {
 
 @media (max-width: 720px) {
   .topbar {
-    flex-direction: column;
-    gap: 12px;
+    padding: 14px 16px;
+  }
+
+  .nav {
+    gap: 8px;
+  }
+
+  .nav-row,
+  .nav-row-secondary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .nav-link,
+  .nav-link-logout {
+    margin-left: 0;
+    text-align: center;
   }
 
   .hero {
