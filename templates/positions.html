@@ -39,25 +39,66 @@
         </thead>
         <tbody>
           {% for row in rows %}
+            {% set quote = row.quote or {} %}
             <tr>
               <td>{{ row.accountNumber }}</td>
               <td>{{ row.symbol }}</td>
               <td>{{ row.assetType }}</td>
-              <td>{{ row.qty }}</td>
-              <td>{{ row.avgPrice }}</td>
-              <td>{{ row.marketValue }}</td>
-              <td>{{ row.pnl }}</td>
+              <td>
+                {% if row.qty is not none %}
+                  {{ "%.2f"|format(row.qty|float) }}
+                {% endif %}
+              </td>
+              <td>
+                {% if row.avgPrice is not none %}
+                  ${{ "{:,.2f}".format(row.avgPrice|float) }}
+                {% endif %}
+              </td>
+              <td>
+                {% if row.marketValue is not none %}
+                  ${{ "{:,.2f}".format(row.marketValue|float) }}
+                {% endif %}
+              </td>
+              <td class="{% if row.pnl is not none and row.pnl > 0 %}pl-pos{% elif row.pnl is not none and row.pnl < 0 %}pl-neg{% else %}pl-flat{% endif %}">
+                {% if row.pnl is not none %}
+                  ${{ "{:,.2f}".format(row.pnl|float) }}
+                {% endif %}
+              </td>
               <td>
                 {% if row.pnl_pct is not none %}
                   {{ "%.2f"|format(row.pnl_pct) }}%
                 {% endif %}
               </td>
-              <td>{{ row.dte }}</td>
-              <td>{{ row.quote.last }}</td>
-              <td>{{ row.quote.mark }}</td>
-              <td>{{ row.quote.delta }}</td>
-              <td>{{ row.quote.theta }}</td>
-              <td>{{ row.quote.iv }}</td>
+              <td>
+                {% if row.dte is not none %}
+                  {{ "%.2f"|format(row.dte|float) }}
+                {% endif %}
+              </td>
+              <td>
+                {% if quote.last is not none %}
+                  ${{ "{:,.2f}".format(quote.last|float) }}
+                {% endif %}
+              </td>
+              <td>
+                {% if quote.mark is not none %}
+                  ${{ "{:,.2f}".format(quote.mark|float) }}
+                {% endif %}
+              </td>
+              <td>
+                {% if quote.delta is not none %}
+                  {{ "%.2f"|format(quote.delta|float) }}
+                {% endif %}
+              </td>
+              <td>
+                {% if quote.theta is not none %}
+                  {{ "%.2f"|format(quote.theta|float) }}
+                {% endif %}
+              </td>
+              <td>
+                {% if quote.iv is not none %}
+                  {{ "%.2f"|format(quote.iv|float) }}
+                {% endif %}
+              </td>
               <td>{{ row.action }}</td>
               <td>{{ row.reasons }}</td>
               <td>{{ row.note }}</td>
