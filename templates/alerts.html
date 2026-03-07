@@ -150,7 +150,7 @@
         </thead>
         <tbody>
           {% for row in rows %}
-            {% set quote = row.quote or {} %}
+            {% set quote = row.get("quote", {}) if row is mapping else {} %}
             <tr>
               <td>{{ row.accountNumber }}</td>
               <td>{{ row.symbol }}</td>
@@ -165,7 +165,7 @@
                   ${{ "{:,.2f}".format(row.marketValue|float) }}
                 {% endif %}
               </td>
-              <td class="{% if row.pnl is not none and row.pnl > 0 %}pl-pos{% elif row.pnl is not none and row.pnl < 0 %}pl-neg{% else %}pl-flat{% endif %}">
+              <td>
                 {% if row.pnl is not none %}
                   ${{ "{:,.2f}".format(row.pnl|float) }}
                 {% endif %}
