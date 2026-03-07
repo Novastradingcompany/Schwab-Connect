@@ -120,6 +120,17 @@ body {
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
 }
 
+.nav-link.is-active {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(197, 93, 61, 0.35);
+}
+
+.nav-link.is-active:hover {
+  transform: translateY(0);
+}
+
 .page {
   position: relative;
   z-index: 1;
