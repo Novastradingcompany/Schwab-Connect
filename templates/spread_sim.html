@@ -5,7 +5,7 @@
       <h1>Credit Spread Simulator</h1>
       <p class="subtitle">Plan bull put or bear call trades before entry with a vertical scenario ladder.</p>
     </div>
-    <div class="pill">{{ symbol }} | {{ today }}</div>
+    <div class="pill">{{ symbol }} | {{ today }} | Save Format v{{ sim_schema_version }}</div>
   </section>
 
   {% if error %}
@@ -13,6 +13,9 @@
   {% endif %}
   {% if info %}
     <div class="card">{{ info }}</div>
+  {% endif %}
+  {% if load_warning %}
+    <div class="card alert">{{ load_warning }}</div>
   {% endif %}
 
   <form class="card form" method="get">

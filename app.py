@@ -89,6 +89,8 @@ _ACCOUNT_HASH_CACHE_TTL = 900
 _TRANSACTIONS_CACHE = {"ts": 0.0, "value": []}
 _TRANSACTIONS_CACHE_TTL = 900
 _TRANSACTIONS_FETCH_BUDGET_SEC = 20
+SPREAD_SIM_SAVE_TYPE = "credit_spread_simulation"
+SPREAD_SIM_SAVE_VERSION = 1
 NOVA_MODEL_OPTIONS = [
     "gpt-4o",
     "gpt-4.1",
@@ -3210,6 +3212,7 @@ def options_open():
 def spread_sim():
     error = (request.args.get("error") or "").strip() or None
     info = (request.args.get("info") or "").strip()
+    load_warning = (request.args.get("load_warning") or "").strip() or None
     val = request.values.get
     symbol = (val("symbol") or "SNDK").strip().upper() or "SNDK"
     today = dt.date.today()
@@ -3357,8 +3360,8 @@ def spread_sim():
             try:
                 if action == "download_simulation":
                     payload = {
-                        "type": "credit_spread_simulation",
-                        "version": 1,
+                        "type": SPREAD_SIM_SAVE_TYPE,
+                        "version": SPREAD_SIM_SAVE_VERSION,
                         "saved_at_utc": dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
                         "inputs": params,
                         "results_snapshot": {
@@ -3393,6 +3396,25 @@ def spread_sim():
                         parsed = json.loads(raw.decode("utf-8"))
                     except Exception as exc:
                         raise ValueError("Simulation file is not valid JSON.") from exc
+                    if not isinstance(parsed, dict):
+                        raise ValueError("Simulation file must be a JSON object.")
+                    file_type = (parsed.get("type") or "").strip()
+                    if file_type and file_type != SPREAD_SIM_SAVE_TYPE:
+                        raise ValueError(
+                            f"Unsupported simulation type '{file_type}'. Expected '{SPREAD_SIM_SAVE_TYPE}'."
+                        )
+                    raw_version = parsed.get("version")
+                    if raw_version is None:
+                        raise ValueError("Simulation file is missing required version metadata.")
+                    try:
+                        file_version = int(raw_version)
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError("Simulation file version must be an integer.") from exc
+                    if file_version > SPREAD_SIM_SAVE_VERSION:
+                        raise ValueError(
+                            f"Simulation file uses newer save format v{file_version}. "
+                            f"This app supports up to v{SPREAD_SIM_SAVE_VERSION}."
+                        )
                     loaded_inputs = parsed.get("inputs") if isinstance(parsed, dict) else None
                     if not isinstance(loaded_inputs, dict):
                         raise ValueError("Simulation file is missing an inputs object.")
@@ -3421,10 +3443,58 @@ def spread_sim():
                         if value is None or value == "":
                             continue
                         restored[key] = value
+                    required_keys = {"symbol", "spread_type", "short_strike", "long_strike"}
+                    missing = [key for key in sorted(required_keys) if key not in restored]
+                    if missing:
+                        raise ValueError(f"Simulation file is missing required inputs: {', '.join(missing)}.")
+                    restored_spread_type = str(restored.get("spread_type", "")).strip().lower()
+                    if restored_spread_type not in {"bull_put", "bear_call"}:
+                        raise ValueError("Simulation file has invalid spread_type. Must be bull_put or bear_call.")
+                    if "fill_mode" in restored:
+                        restored_fill_mode = str(restored.get("fill_mode", "")).strip().lower()
+                        if restored_fill_mode not in {"mid", "natural"}:
+                            raise ValueError("Simulation file has invalid fill_mode. Must be mid or natural.")
+                    if "preset" in restored:
+                        restored_preset = str(restored.get("preset", "")).strip().lower()
+                        if restored_preset not in {"custom", "conservative", "income", "high_pop"}:
+                            raise ValueError(
+                                "Simulation file has invalid preset. Must be custom, conservative, income, or high_pop."
+                            )
+                    numeric_fields = {
+                        "stock_price": {"min": 0.01},
+                        "short_strike": {"min": 0.01},
+                        "long_strike": {"min": 0.01},
+                        "credit": {"min": 0.0},
+                        "slippage": {"min": 0.0},
+                        "contracts": {"min": 1, "int": True},
+                        "dte": {"min": 0, "int": True},
+                        "iv_short": {"min": 0.01},
+                        "iv_long": {"min": 0.01},
+                        "rate": {"min": 0.0},
+                        "price_step": {"min": 0.01},
+                    }
+                    for field, rules in numeric_fields.items():
+                        if field not in restored:
+                            continue
+                        parsed_num = _safe_float(restored[field])
+                        if parsed_num is None:
+                            raise ValueError(f"Simulation field '{field}' must be numeric.")
+                        if rules.get("int"):
+                            if abs(parsed_num - round(parsed_num)) > 1e-9:
+                                raise ValueError(f"Simulation field '{field}' must be an integer.")
+                            parsed_num = int(round(parsed_num))
+                        if parsed_num < rules["min"]:
+                            raise ValueError(f"Simulation field '{field}' must be >= {rules['min']}.")
+                        restored[field] = parsed_num
                     if not restored:
                         raise ValueError("Simulation file has no restorable inputs.")
                     redirect_params = dict(restored)
                     redirect_params["info"] = "Loaded simulation file."
+                    if file_version < SPREAD_SIM_SAVE_VERSION:
+                        redirect_params["load_warning"] = (
+                            f"Loaded older save format v{file_version} in compatibility mode "
+                            f"(current is v{SPREAD_SIM_SAVE_VERSION})."
+                        )
                     return redirect(url_for("spread_sim", **redirect_params))
                 elif action == "export_watchlist":
                     watch = set(load_watchlist())
@@ -3540,6 +3610,8 @@ def spread_sim():
         "spread_sim.html",
         error=error,
         info=info,
+        load_warning=load_warning,
+        sim_schema_version=SPREAD_SIM_SAVE_VERSION,
         spread_type=spread_type,
         symbol=symbol,
         today=today.isoformat(),
