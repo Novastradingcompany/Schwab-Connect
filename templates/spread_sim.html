@@ -101,7 +101,19 @@
       <button class="button" type="submit">Run Simulation</button>
       <button class="button" type="submit" name="action" value="export_watchlist" formmethod="post">Export Setup to Watchlist</button>
       <button class="button" type="submit" name="action" value="export_ticket" formmethod="post">Export Setup to Ticket</button>
+      <button class="button" type="submit" name="action" value="download_simulation" formmethod="post">Save Simulation File</button>
       <button class="button no-print" type="button" onclick="window.print()">Print</button>
+    </div>
+  </form>
+
+  <form class="card form" method="post" enctype="multipart/form-data">
+    <div class="form-actions">
+      <input type="hidden" name="action" value="load_simulation">
+      <label>
+        Load Saved Simulation (JSON)
+        <input type="file" name="simulation_file" accept=".json,application/json" required>
+      </label>
+      <button class="button" type="submit">Load Simulation File</button>
     </div>
   </form>
 

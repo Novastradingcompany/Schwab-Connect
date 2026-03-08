@@ -3334,7 +3334,7 @@ def spread_sim():
 
     if request.method == "POST":
         action = (request.form.get("action") or "").strip().lower()
-        if action in {"export_watchlist", "export_ticket"}:
+        if action in {"export_watchlist", "export_ticket", "download_simulation", "load_simulation"}:
             params = {
                 "symbol": symbol,
                 "spread_type": spread_type,
@@ -3355,7 +3355,78 @@ def spread_sim():
                 "price_to": _safe_float(val("price_to")) if _safe_float(val("price_to")) is not None else price_to_default,
             }
             try:
-                if action == "export_watchlist":
+                if action == "download_simulation":
+                    payload = {
+                        "type": "credit_spread_simulation",
+                        "version": 1,
+                        "saved_at_utc": dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+                        "inputs": params,
+                        "results_snapshot": {
+                            "entry_credit": round(entry_credit, 4),
+                            "credit_source": credit_source,
+                            "estimated_credit": round(estimated_credit, 4),
+                            "width": round(width, 2),
+                            "breakeven": round(breakeven, 2),
+                            "max_profit": round(max_profit, 2),
+                            "max_loss": round(max_loss, 2),
+                            "pop_score_pct": (round(pop_score * 100.0, 2) if pop_score is not None else None),
+                            "strike_buffer_pct": (round(strike_buffer_pct, 2) if strike_buffer_pct is not None else None),
+                            "risk_warning": risk_warning,
+                        },
+                    }
+                    safe_symbol = re.sub(r"[^A-Za-z0-9._-]", "_", symbol or "spread")
+                    filename = f"spread-sim-{safe_symbol}-{today.isoformat()}.json"
+                    body = json.dumps(payload, indent=2)
+                    return app.response_class(
+                        body,
+                        mimetype="application/json",
+                        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                    )
+                elif action == "load_simulation":
+                    upload = request.files.get("simulation_file")
+                    if not upload or not upload.filename:
+                        raise ValueError("Choose a simulation JSON file to load.")
+                    raw = upload.read()
+                    if not raw:
+                        raise ValueError("Uploaded simulation file is empty.")
+                    try:
+                        parsed = json.loads(raw.decode("utf-8"))
+                    except Exception as exc:
+                        raise ValueError("Simulation file is not valid JSON.") from exc
+                    loaded_inputs = parsed.get("inputs") if isinstance(parsed, dict) else None
+                    if not isinstance(loaded_inputs, dict):
+                        raise ValueError("Simulation file is missing an inputs object.")
+                    allowed = {
+                        "symbol",
+                        "spread_type",
+                        "stock_price",
+                        "short_strike",
+                        "long_strike",
+                        "credit",
+                        "fill_mode",
+                        "preset",
+                        "slippage",
+                        "contracts",
+                        "dte",
+                        "iv_short",
+                        "iv_long",
+                        "rate",
+                        "price_step",
+                        "price_from",
+                        "price_to",
+                    }
+                    restored = {}
+                    for key in allowed:
+                        value = loaded_inputs.get(key)
+                        if value is None or value == "":
+                            continue
+                        restored[key] = value
+                    if not restored:
+                        raise ValueError("Simulation file has no restorable inputs.")
+                    redirect_params = dict(restored)
+                    redirect_params["info"] = "Loaded simulation file."
+                    return redirect(url_for("spread_sim", **redirect_params))
+                elif action == "export_watchlist":
                     watch = set(load_watchlist())
                     watch_notes = load_watchlist_notes()
                     before = len(watch)
