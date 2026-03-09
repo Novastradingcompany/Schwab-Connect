@@ -751,11 +751,38 @@ def _realized_vol_pct(closes, window=20):
     return math.sqrt(variance) * 100
 
 
-def run_optionable_weekly_scan(universe, lookback_days=5, top_n=10, max_seconds=25, previous=None):
+def _normalize_movers_strategy(value):
+    strategy = (value or "bull_put").strip().lower()
+    if strategy in ("bull_put", "bear_call"):
+        return strategy
+    return "bull_put"
+
+
+def _movers_directional_score(strategy, ret_5d, ret_20d, vol_20d):
+    r5 = ret_5d or 0.0
+    r20 = ret_20d or 0.0
+    vol = vol_20d or 0.0
+    if strategy == "bear_call":
+        # Favor downside momentum for bearish call credit spreads.
+        return max(0.0, -r5) + (max(0.0, -r20) * 0.5) + (vol * 0.35)
+    # Default to bullish momentum for put credit spreads.
+    return max(0.0, r5) + (max(0.0, r20) * 0.5) + (vol * 0.35)
+
+
+def run_optionable_weekly_scan(
+    universe,
+    lookback_days=5,
+    top_n=10,
+    max_seconds=25,
+    strategy="bull_put",
+    previous=None,
+):
+    strategy = _normalize_movers_strategy(strategy)
     rows_cache = {}
     if isinstance(previous, dict):
         prev_lookback = int(previous.get("lookback_days", lookback_days))
-        if prev_lookback == int(lookback_days):
+        prev_strategy = _normalize_movers_strategy(previous.get("strategy", "bull_put"))
+        if prev_lookback == int(lookback_days) and prev_strategy == strategy:
             for item in previous.get("rows_cache", []) or []:
                 symbol = (item.get("symbol") or "").upper().strip()
                 if symbol:
@@ -786,7 +813,8 @@ def run_optionable_weekly_scan(universe, lookback_days=5, top_n=10, max_seconds=
     start_index = 0
     if isinstance(previous, dict):
         prev_lookback = int(previous.get("lookback_days", lookback_days))
-        if prev_lookback == int(lookback_days):
+        prev_strategy = _normalize_movers_strategy(previous.get("strategy", "bull_put"))
+        if prev_lookback == int(lookback_days) and prev_strategy == strategy:
             start_index = int(previous.get("next_index", 0)) % total_symbols
 
     for step in range(total_symbols):
@@ -808,7 +836,7 @@ def run_optionable_weekly_scan(universe, lookback_days=5, top_n=10, max_seconds=
             vol_20d = _realized_vol_pct(closes, window=20)
             if ret_5d is None and ret_20d is None:
                 continue
-            score = abs(ret_5d or 0.0) + (abs(ret_20d or 0.0) * 0.5) + ((vol_20d or 0.0) * 0.5)
+            score = _movers_directional_score(strategy, ret_5d, ret_20d, vol_20d)
             rows_cache[symbol] = {
                 "symbol": symbol,
                 "name": name,
@@ -832,6 +860,7 @@ def run_optionable_weekly_scan(universe, lookback_days=5, top_n=10, max_seconds=
         "lookback_days": lookback_days,
         "top_n": top_n,
         "max_seconds": max_seconds,
+        "strategy": strategy,
         "timed_out": timed_out,
         "universe_size": len(universe),
         "scanned": scanned,
@@ -2880,6 +2909,7 @@ def movers_agent():
     lookback_days = int((snapshot or {}).get("lookback_days", 5))
     top_n = int((snapshot or {}).get("top_n", 10))
     max_seconds = int((snapshot or {}).get("max_seconds", 25))
+    strategy = _normalize_movers_strategy((snapshot or {}).get("strategy", "bull_put"))
 
     if request.method == "POST":
         action = request.form.get("action", "")
@@ -2892,6 +2922,7 @@ def movers_agent():
                 lookback_days = max(1, int(request.form.get("lookback_days", 5)))
                 top_n = max(1, int(request.form.get("top_n", 10)))
                 max_seconds = max(10, int(request.form.get("max_seconds", 25)))
+                strategy = _normalize_movers_strategy(request.form.get("strategy", strategy))
                 if not universe:
                     raise RuntimeError(f"No optionable universe loaded from {selected_universe_file}.")
                 previous_snapshot = snapshot
@@ -2902,6 +2933,7 @@ def movers_agent():
                     lookback_days=lookback_days,
                     top_n=top_n,
                     max_seconds=max_seconds,
+                    strategy=strategy,
                     previous=previous_snapshot,
                 )
                 snapshot["universe_file"] = selected_universe_file
@@ -2909,7 +2941,8 @@ def movers_agent():
                 rows_count = len(snapshot.get("rows") or [])
                 covered = int(snapshot.get("covered_count", 0))
                 total = int(snapshot.get("universe_size", 0))
-                info = f"Weekly scan completed. Returned {rows_count} symbols. Coverage {covered}/{total}."
+                label = "Bull Put" if strategy == "bull_put" else "Bear Call"
+                info = f"Weekly scan completed ({label}). Returned {rows_count} symbols. Coverage {covered}/{total}."
             except Exception as exc:
                 error = str(exc)
         elif action == "clear_snapshot":
@@ -2933,6 +2966,7 @@ def movers_agent():
                 info = f"Added {added} symbol(s) to watchlist."
             snapshot = load_movers_snapshot()
             selected_universe_file = (snapshot or {}).get("universe_file") or selected_universe_file
+            strategy = _normalize_movers_strategy((snapshot or {}).get("strategy", strategy))
 
     universe = load_optionable_universe(selected_universe_file)
 
@@ -2948,6 +2982,7 @@ def movers_agent():
             "lookback_days": lookback_days,
             "top_n": top_n,
             "max_seconds": max_seconds,
+            "strategy": strategy,
         },
     )
 
