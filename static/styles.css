@@ -232,6 +232,17 @@ h1 {
   gap: 14px;
 }
 
+.strike-reminder {
+  align-self: end;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed rgba(197, 93, 61, 0.45);
+  background: rgba(197, 93, 61, 0.08);
+  color: #6f2411;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 label {
   display: flex;
   flex-direction: column;
