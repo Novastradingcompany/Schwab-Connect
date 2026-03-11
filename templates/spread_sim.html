@@ -99,12 +99,13 @@
         Price Step
         <input type="number" step="0.01" min="0.01" name="price_step" value="{{ price_step }}">
       </label>
-      <div class="strike-reminder" aria-live="polite">
-        {% if spread_type == "bull_put" %}
-          Reminder: For Bull Put, <strong>Short Strike is higher</strong> and Long Strike is lower.
-        {% else %}
-          Reminder: For Bear Call, <strong>Long Strike is higher</strong> and Short Strike is lower.
-        {% endif %}
+      <div class="strike-reminders" aria-live="polite">
+        <div class="strike-reminder">
+          Put credit reminder: <strong>Short Strike is higher</strong>, Long Strike is lower.
+        </div>
+        <div class="strike-reminder">
+          Call credit reminder: <strong>Long Strike is higher</strong>, Short Strike is lower.
+        </div>
       </div>
     </div>
     <div class="form-actions">

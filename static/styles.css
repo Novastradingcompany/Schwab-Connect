@@ -233,7 +233,6 @@ h1 {
 }
 
 .strike-reminder {
-  align-self: end;
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px dashed rgba(197, 93, 61, 0.45);
@@ -241,6 +240,13 @@ h1 {
   color: #6f2411;
   font-size: 13px;
   line-height: 1.4;
+}
+
+.strike-reminders {
+  align-self: end;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 10px;
 }
 
 label {
