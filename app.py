@@ -3413,6 +3413,35 @@ def spread_sim():
         pop_score = min(max(pop_score, 0.0), 1.0)
     max_profit = entry_credit * 100 * contracts
     max_loss = max(width - entry_credit, 0.0) * 100 * contracts
+    risk_reward_ratio = (max_profit / max_loss) if max_loss > 0 else None
+    return_on_risk_pct = ((max_profit / max_loss) * 100.0) if max_loss > 0 else None
+
+    if spread_type == "bull_put":
+        current_short_model = _bs_put_price(stock_price, short_strike, t_years, rate, iv_short)
+        current_long_model = _bs_put_price(stock_price, long_strike, t_years, rate, iv_long)
+        current_short_exp = _put_intrinsic(stock_price, short_strike)
+        current_long_exp = _put_intrinsic(stock_price, long_strike)
+        current_zone = (
+            "Max Profit Zone" if stock_price >= short_strike
+            else "Max Loss Zone" if stock_price <= long_strike
+            else "Profit Zone" if stock_price >= breakeven
+            else "Loss Zone"
+        )
+    else:
+        current_short_model = _bs_call_price(stock_price, short_strike, t_years, rate, iv_short)
+        current_long_model = _bs_call_price(stock_price, long_strike, t_years, rate, iv_long)
+        current_short_exp = _call_intrinsic(stock_price, short_strike)
+        current_long_exp = _call_intrinsic(stock_price, long_strike)
+        current_zone = (
+            "Max Profit Zone" if stock_price <= short_strike
+            else "Max Loss Zone" if stock_price >= long_strike
+            else "Profit Zone" if stock_price <= breakeven
+            else "Loss Zone"
+        )
+    current_spread_value_model = current_short_model - current_long_model
+    current_spread_value_expiry = current_short_exp - current_long_exp
+    current_pnl_model = (entry_credit - current_spread_value_model) * 100 * contracts
+    current_pnl_expiry = (entry_credit - current_spread_value_expiry) * 100 * contracts
 
     strike_buffer_pct = None
     if stock_price and stock_price > 0:
@@ -3728,6 +3757,13 @@ def spread_sim():
         breakeven=round(breakeven, 2),
         max_profit=round(max_profit, 2),
         max_loss=round(max_loss, 2),
+        risk_reward_ratio=(round(risk_reward_ratio, 2) if risk_reward_ratio is not None else None),
+        return_on_risk_pct=(round(return_on_risk_pct, 2) if return_on_risk_pct is not None else None),
+        current_zone=current_zone,
+        current_spread_value_model=round(current_spread_value_model, 4),
+        current_spread_value_expiry=round(current_spread_value_expiry, 4),
+        current_pnl_model=round(current_pnl_model, 2),
+        current_pnl_expiry=round(current_pnl_expiry, 2),
         pop_score=(round(pop_score * 100.0, 2) if pop_score is not None else None),
         strike_buffer_pct=(round(strike_buffer_pct, 2) if strike_buffer_pct is not None else None),
         risk_warning=risk_warning,

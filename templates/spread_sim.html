@@ -138,6 +138,39 @@
     {% if risk_warning %}
       <div class="alert">{{ risk_warning }}</div>
     {% endif %}
+    <div class="pl-summary-grid">
+      <div class="pl-summary-card">
+        <div class="metric-label">Max Profit</div>
+        <div class="metric-value pl-pos">${{ "{:,.2f}".format(max_profit) }}</div>
+        {% if return_on_risk_pct is not none %}
+          <div class="pl-summary-note">{{ "%.2f"|format(return_on_risk_pct) }}% return on risk</div>
+        {% endif %}
+      </div>
+      <div class="pl-summary-card">
+        <div class="metric-label">Max Loss</div>
+        <div class="metric-value pl-neg">${{ "{:,.2f}".format(-max_loss) }}</div>
+        {% if risk_reward_ratio is not none %}
+          <div class="pl-summary-note">Risk/reward {{ "%.2f"|format(risk_reward_ratio) }}x</div>
+        {% endif %}
+      </div>
+      <div class="pl-summary-card">
+        <div class="metric-label">Breakeven</div>
+        <div class="metric-value">${{ "{:,.2f}".format(breakeven) }}</div>
+        <div class="pl-summary-note">{{ current_zone }} at spot</div>
+      </div>
+      <div class="pl-summary-card">
+        <div class="metric-label">Current Spot P/L (Model)</div>
+        <div class="metric-value {% if current_pnl_model > 0 %}pl-pos{% elif current_pnl_model < 0 %}pl-neg{% else %}pl-flat{% endif %}">
+          ${{ "{:,.2f}".format(current_pnl_model) }}
+        </div>
+        <div class="pl-summary-note">
+          Expiry at spot:
+          <span class="{% if current_pnl_expiry > 0 %}pl-pos{% elif current_pnl_expiry < 0 %}pl-neg{% else %}pl-flat{% endif %}">
+            ${{ "{:,.2f}".format(current_pnl_expiry) }}
+          </span>
+        </div>
+      </div>
+    </div>
     <div class="kv-grid">
       <div><strong>Symbol:</strong> {{ symbol }}</div>
       <div><strong>Date:</strong> {{ today }}</div>
@@ -157,12 +190,13 @@
       <div><strong>Entry Credit Used:</strong> ${{ "{:,.2f}".format(entry_credit) }} ({{ "Mid" if fill_mode == "mid" else "Natural" }})</div>
       <div><strong>Model Est. Credit:</strong> ${{ "{:,.2f}".format(estimated_credit) }}</div>
       <div><strong>Contracts:</strong> {{ contracts }}</div>
+      <div><strong>Current Spot Zone:</strong> {{ current_zone }}</div>
       <div><strong>Breakeven:</strong> ${{ "{:,.2f}".format(breakeven) }}</div>
       {% if pop_score is not none %}
         <div><strong>POP Score:</strong> {{ "%.2f"|format(pop_score) }}%</div>
       {% endif %}
-      <div><strong>Max Profit:</strong> <span class="pl-pos">${{ "{:,.2f}".format(max_profit) }}</span></div>
-      <div><strong>Max Loss:</strong> <span class="pl-neg">${{ "{:,.2f}".format(-max_loss) }}</span></div>
+      <div><strong>Current Spread Value (Model):</strong> ${{ "{:,.2f}".format(current_spread_value_model) }}</div>
+      <div><strong>Current Spread Value (Expiry):</strong> ${{ "{:,.2f}".format(current_spread_value_expiry) }}</div>
       <div><strong>Model Inputs:</strong> DTE {{ dte }}, IVs {{ "%.2f"|format(iv_short) }}/{{ "%.2f"|format(iv_long) }}, r {{ "%.3f"|format(rate) }}</div>
       {% if strike_buffer_pct is not none %}
         <div><strong>Spot to Short Strike:</strong> {{ "%.2f"|format(strike_buffer_pct) }}%</div>
