@@ -47,19 +47,19 @@
       </div>
       <label>
         Stock Value (Now)
-        <input id="stock-price" type="number" step="0.01" name="stock_price" value="{{ stock_price }}">
+        <input id="stock-price" type="number" step="0.01" name="stock_price" value="{{ '%.2f'|format(stock_price) }}">
       </label>
       <label>
         Short Strike {% if spread_type == "bull_put" %}(Sell Put){% else %}(Sell Call){% endif %}
-        <input id="short-strike" type="number" step="0.01" name="short_strike" value="{{ short_strike }}" required>
+        <input id="short-strike" type="number" step="0.01" name="short_strike" value="{{ '%.2f'|format(short_strike) }}" required>
       </label>
       <label>
         Long Strike {% if spread_type == "bull_put" %}(Buy Put){% else %}(Buy Call){% endif %}
-        <input id="long-strike" type="number" step="0.01" name="long_strike" value="{{ long_strike }}" required>
+        <input id="long-strike" type="number" step="0.01" name="long_strike" value="{{ '%.2f'|format(long_strike) }}" required>
       </label>
       <label>
         Net Credit (per spread)
-        <input id="credit" type="number" step="0.01" min="0" name="credit" value="{{ credit }}" placeholder="Leave blank to estimate">
+        <input id="credit" type="number" step="0.01" min="0" name="credit" value="{{ '%.2f'|format(credit) }}" placeholder="Leave blank to estimate">
       </label>
       <label>
         Fill Mode
@@ -70,7 +70,7 @@
       </label>
       <label>
         Slippage (Natural, per spread)
-        <input id="slippage" type="number" step="0.01" min="0" name="slippage" value="{{ slippage }}">
+        <input id="slippage" type="number" step="0.01" min="0" name="slippage" value="{{ '%.2f'|format(slippage) }}">
       </label>
       <label>
         Contracts
@@ -82,27 +82,27 @@
       </label>
       <label>
         IV Short
-        <input id="iv-short" type="number" step="0.01" min="0.01" name="iv_short" value="{{ iv_short }}">
+        <input id="iv-short" type="number" step="0.01" min="0.01" name="iv_short" value="{{ '%.2f'|format(iv_short) }}">
       </label>
       <label>
         IV Long
-        <input id="iv-long" type="number" step="0.01" min="0.01" name="iv_long" value="{{ iv_long }}">
+        <input id="iv-long" type="number" step="0.01" min="0.01" name="iv_long" value="{{ '%.2f'|format(iv_long) }}">
       </label>
       <label>
         Risk-Free Rate
-        <input id="rate" type="number" step="0.001" min="0" name="rate" value="{{ rate }}">
+        <input id="rate" type="number" step="0.01" min="0" name="rate" value="{{ '%.2f'|format(rate) }}">
       </label>
       <label>
         Price From
-        <input id="price-from" type="number" step="0.01" name="price_from" value="{{ price_from }}">
+        <input id="price-from" type="number" step="0.01" name="price_from" value="{{ '%.2f'|format(price_from) }}">
       </label>
       <label>
         Price To
-        <input id="price-to" type="number" step="0.01" name="price_to" value="{{ price_to }}">
+        <input id="price-to" type="number" step="0.01" name="price_to" value="{{ '%.2f'|format(price_to) }}">
       </label>
       <label>
         Price Step
-        <input id="price-step" type="number" step="0.01" min="0.01" name="price_step" value="{{ price_step }}">
+        <input id="price-step" type="number" step="0.01" min="0.01" name="price_step" value="{{ '%.2f'|format(price_step) }}">
       </label>
       <div class="strike-reminders strike-reminders-full" aria-live="polite">
         <div class="strike-reminder">
@@ -316,6 +316,19 @@
         price_from: document.getElementById("price-from"),
         price_to: document.getElementById("price-to")
       };
+      const twoDecimalFields = new Set([
+        "slippage",
+        "iv_short",
+        "iv_long",
+        "price_step",
+        "stock_price",
+        "short_strike",
+        "long_strike",
+        "price_from",
+        "price_to",
+        "credit",
+        "rate"
+      ]);
 
       function roundTo(value, decimals) {
         const factor = Math.pow(10, decimals);
@@ -352,11 +365,15 @@
         const defaults = meta.defaults || {};
         Object.keys(defaults).forEach(function (key) {
           if (fields[key]) {
-            fields[key].value = defaults[key];
+            if (typeof defaults[key] === "number" && twoDecimalFields.has(key)) {
+              fields[key].value = defaults[key].toFixed(2);
+            } else {
+              fields[key].value = defaults[key];
+            }
           }
         });
         if (meta.scenario && fields.price_step) {
-          fields.price_step.value = meta.scenario.price_step;
+          fields.price_step.value = Number(meta.scenario.price_step).toFixed(2);
         }
         applyScenarioBounds(meta);
       });
