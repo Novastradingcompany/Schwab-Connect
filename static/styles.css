@@ -249,6 +249,18 @@ h1 {
   gap: 10px;
 }
 
+.strike-reminders-full {
+  grid-column: 1 / -1;
+  align-self: start;
+  margin-top: 4px;
+}
+
+@media (max-width: 900px) {
+  .strike-reminders {
+    grid-template-columns: 1fr;
+  }
+}
+
 label {
   display: flex;
   flex-direction: column;
