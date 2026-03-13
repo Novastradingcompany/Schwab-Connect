@@ -264,6 +264,33 @@
   </section>
 
   <section class="card">
+    <div class="card-title">Stop And Defense Lines</div>
+    <div class="pl-summary-grid">
+      {% for line in defense_lines %}
+        <div class="pl-summary-card">
+          <div class="metric-label">{{ line.label }}</div>
+          {% if line.kind == "loss_stop" %}
+            <div class="metric-value pl-neg">${{ "{:,.2f}".format(line.stop_loss_amount) }}</div>
+            <div class="pl-summary-note">Model stop if P/L falls to {{ "{:,.2f}".format(line.pnl_threshold) }}</div>
+          {% else %}
+            <div class="metric-value">${{ "{:,.2f}".format(line.trigger_price) }}</div>
+            <div class="pl-summary-note">
+              {% if spread_type == "bull_put" %}
+                Spot below short strike can trigger defense.
+              {% else %}
+                Spot above short strike can trigger defense.
+              {% endif %}
+            </div>
+          {% endif %}
+          <div class="pl-summary-note {% if line.hit_now %}pl-neg{% else %}pl-flat{% endif %}">
+            {% if line.hit_now %}Triggered now{% else %}Not triggered now{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
     <div class="card-title">Vertical Scenario Ladder</div>
     <div class="table-wrap">
       <table>
@@ -285,7 +312,7 @@
               <td>
                 {% if row.markers %}
                   {% for marker in row.markers %}
-                    <span class="target-chip">{{ marker }}</span>
+                    <span class="{% if 'Target' in marker or marker == 'Spot' %}target-chip{% else %}defense-chip{% endif %}">{{ marker }}</span>
                   {% endfor %}
                 {% else %}
                   <span class="pl-flat">-</span>

@@ -3459,6 +3459,21 @@ def spread_sim():
             "target_profit": round(target_profit, 2),
             "remaining_value_per_spread": round(max(entry_credit * (1.0 - (pct / 100.0)), 0.0), 2),
         })
+    defense_lines = []
+    for pct in (50, 75):
+        stop_loss_amount = max_loss * (pct / 100.0)
+        defense_lines.append({
+            "label": f"{pct}% Max Loss",
+            "kind": "loss_stop",
+            "pct": pct,
+            "stop_loss_amount": round(stop_loss_amount, 2),
+            "pnl_threshold": round(-stop_loss_amount, 2),
+        })
+    defense_lines.append({
+        "label": "Short Strike Breach",
+        "kind": "short_strike_breach",
+        "trigger_price": round(short_strike, 2),
+    })
 
     if spread_type == "bull_put":
         current_short_model = _bs_put_price(stock_price, short_strike, t_years, rate, iv_short)
@@ -3471,6 +3486,7 @@ def spread_sim():
             else "Profit Zone" if stock_price >= breakeven
             else "Loss Zone"
         )
+        short_strike_breached_now = stock_price < short_strike
     else:
         current_short_model = _bs_call_price(stock_price, short_strike, t_years, rate, iv_short)
         current_long_model = _bs_call_price(stock_price, long_strike, t_years, rate, iv_long)
@@ -3482,12 +3498,18 @@ def spread_sim():
             else "Profit Zone" if stock_price <= breakeven
             else "Loss Zone"
         )
+        short_strike_breached_now = stock_price > short_strike
     current_spread_value_model = current_short_model - current_long_model
     current_spread_value_expiry = current_short_exp - current_long_exp
     current_pnl_model = (entry_credit - current_spread_value_model) * 100 * contracts
     current_pnl_expiry = (entry_credit - current_spread_value_expiry) * 100 * contracts
     for target in profit_targets:
         target["hit_now"] = current_pnl_model >= target["target_profit"] - 1e-9
+    for line in defense_lines:
+        if line["kind"] == "loss_stop":
+            line["hit_now"] = current_pnl_model <= line["pnl_threshold"] + 1e-9
+        else:
+            line["hit_now"] = short_strike_breached_now
 
     strike_buffer_pct = None
     if stock_price and stock_price > 0:
@@ -3777,6 +3799,13 @@ def spread_sim():
         for target in profit_targets:
             target_idx = min(range(len(rows)), key=lambda idx: abs(rows[idx]["pnl_model"] - target["target_profit"]))
             rows[target_idx]["markers"].append(target["label"])
+        breach_idx = min(range(len(rows)), key=lambda idx: abs(rows[idx]["stock_price"] - short_strike))
+        rows[breach_idx]["markers"].append("Short Strike Breach")
+        for line in defense_lines:
+            if line["kind"] != "loss_stop":
+                continue
+            stop_idx = min(range(len(rows)), key=lambda idx: abs(rows[idx]["pnl_model"] - line["pnl_threshold"]))
+            rows[stop_idx]["markers"].append(line["label"])
         for row in rows:
             seen = []
             for marker in row["markers"]:
@@ -3825,6 +3854,8 @@ def spread_sim():
         current_pnl_model=round(current_pnl_model, 2),
         current_pnl_expiry=round(current_pnl_expiry, 2),
         profit_targets=profit_targets,
+        defense_lines=defense_lines,
+        short_strike_breached_now=short_strike_breached_now,
         pop_score=(round(pop_score * 100.0, 2) if pop_score is not None else None),
         strike_buffer_pct=(round(strike_buffer_pct, 2) if strike_buffer_pct is not None else None),
         risk_warning=risk_warning,

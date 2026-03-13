@@ -254,6 +254,18 @@ h1 {
   white-space: nowrap;
 }
 
+.defense-chip {
+  display: inline-block;
+  margin: 2px 6px 2px 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(180, 35, 24, 0.12);
+  color: #a1261b;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .form {
   display: block;
 }
