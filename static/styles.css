@@ -242,6 +242,18 @@ h1 {
   color: var(--ink-soft);
 }
 
+.target-chip {
+  display: inline-block;
+  margin: 2px 6px 2px 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(197, 93, 61, 0.12);
+  color: #8c3d1f;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .form {
   display: block;
 }

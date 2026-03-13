@@ -3450,6 +3450,15 @@ def spread_sim():
     max_loss = max(width - entry_credit, 0.0) * 100 * contracts
     risk_reward_ratio = (max_profit / max_loss) if max_loss > 0 else None
     return_on_risk_pct = ((max_profit / max_loss) * 100.0) if max_loss > 0 else None
+    profit_targets = []
+    for pct in (25, 50, 75):
+        target_profit = max_profit * (pct / 100.0)
+        profit_targets.append({
+            "label": f"{pct}% Target",
+            "pct": pct,
+            "target_profit": round(target_profit, 2),
+            "remaining_value_per_spread": round(max(entry_credit * (1.0 - (pct / 100.0)), 0.0), 2),
+        })
 
     if spread_type == "bull_put":
         current_short_model = _bs_put_price(stock_price, short_strike, t_years, rate, iv_short)
@@ -3477,6 +3486,8 @@ def spread_sim():
     current_spread_value_expiry = current_short_exp - current_long_exp
     current_pnl_model = (entry_credit - current_spread_value_model) * 100 * contracts
     current_pnl_expiry = (entry_credit - current_spread_value_expiry) * 100 * contracts
+    for target in profit_targets:
+        target["hit_now"] = current_pnl_model >= target["target_profit"] - 1e-9
 
     strike_buffer_pct = None
     if stock_price and stock_price > 0:
@@ -3751,6 +3762,7 @@ def spread_sim():
 
         rows.append({
             "stock_price": round(price, 2),
+            "markers": [],
             "zone": zone,
             "spread_value_model": round(spread_model, 4),
             "pnl_model": round(pnl_model, 2),
@@ -3758,6 +3770,19 @@ def spread_sim():
             "pnl_expiry": round(pnl_exp, 2),
         })
         price = round(price - price_step, 8)
+
+    if rows:
+        spot_idx = min(range(len(rows)), key=lambda idx: abs(rows[idx]["stock_price"] - stock_price))
+        rows[spot_idx]["markers"].append("Spot")
+        for target in profit_targets:
+            target_idx = min(range(len(rows)), key=lambda idx: abs(rows[idx]["pnl_model"] - target["target_profit"]))
+            rows[target_idx]["markers"].append(target["label"])
+        for row in rows:
+            seen = []
+            for marker in row["markers"]:
+                if marker not in seen:
+                    seen.append(marker)
+            row["markers"] = seen
 
     return render_template(
         "spread_sim.html",
@@ -3799,6 +3824,7 @@ def spread_sim():
         current_spread_value_expiry=round(current_spread_value_expiry, 4),
         current_pnl_model=round(current_pnl_model, 2),
         current_pnl_expiry=round(current_pnl_expiry, 2),
+        profit_targets=profit_targets,
         pop_score=(round(pop_score * 100.0, 2) if pop_score is not None else None),
         strike_buffer_pct=(round(strike_buffer_pct, 2) if strike_buffer_pct is not None else None),
         risk_warning=risk_warning,

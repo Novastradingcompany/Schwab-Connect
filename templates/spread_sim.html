@@ -248,12 +248,29 @@
   </section>
 
   <section class="card">
+    <div class="card-title">Profit Target Markers</div>
+    <div class="pl-summary-grid">
+      {% for target in profit_targets %}
+        <div class="pl-summary-card">
+          <div class="metric-label">{{ target.label }}</div>
+          <div class="metric-value pl-pos">${{ "{:,.2f}".format(target.target_profit) }}</div>
+          <div class="pl-summary-note">Buy back near ${{ "{:,.2f}".format(target.remaining_value_per_spread) }} per spread</div>
+          <div class="pl-summary-note {% if target.hit_now %}pl-pos{% else %}pl-flat{% endif %}">
+            {% if target.hit_now %}Reached at current model price{% else %}Not reached at current model price{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
     <div class="card-title">Vertical Scenario Ladder</div>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th>Stock Price</th>
+            <th>Markers</th>
             <th>Zone</th>
             <th>Spread Value (Model)</th>
             <th>P/L (Model)</th>
@@ -265,6 +282,15 @@
           {% for row in rows %}
             <tr>
               <td>${{ "{:,.2f}".format(row.stock_price) }}</td>
+              <td>
+                {% if row.markers %}
+                  {% for marker in row.markers %}
+                    <span class="target-chip">{{ marker }}</span>
+                  {% endfor %}
+                {% else %}
+                  <span class="pl-flat">-</span>
+                {% endif %}
+              </td>
               <td>{{ row.zone }}</td>
               <td>${{ "{:,.2f}".format(row.spread_value_model) }}</td>
               <td class="{% if row.pnl_model > 0 %}pl-pos{% elif row.pnl_model < 0 %}pl-neg{% else %}pl-flat{% endif %}">
