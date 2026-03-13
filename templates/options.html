@@ -207,6 +207,9 @@
         <table>
           <thead>
             <tr>
+              {% if strategy != "iron_condor" %}
+                <th>Sim</th>
+              {% endif %}
               <th>Select</th>
               {% for col in results_columns %}
                 {% if col in ["Credit (Realistic)", "Total Credit ($)", "Max Loss ($)", "POP %"] %}
@@ -220,6 +223,13 @@
           <tbody>
             {% for row in results_rows %}
               <tr>
+                {% if strategy != "iron_condor" %}
+                  <td>
+                    {% if row._spread_sim_url %}
+                      <a class="chip-link" href="{{ row._spread_sim_url }}">Open</a>
+                    {% endif %}
+                  </td>
+                {% endif %}
                 <td><input type="radio" name="trade_index" value="{{ loop.index0 }}"></td>
                 {% for col in results_columns %}
                   <td>{{ row[col] }}</td>

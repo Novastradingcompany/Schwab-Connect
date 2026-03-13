@@ -1768,6 +1768,41 @@ def parse_legs_from_trade(trade_text):
     return legs
 
 
+def build_spread_sim_link(symbol, strategy, pricing_mode, row):
+    if strategy not in {"bull_put", "bear_call"} or not isinstance(row, dict):
+        return None
+    legs = parse_legs_from_trade(row.get("Trade"))
+    if len(legs) < 2:
+        return None
+    short_leg = next((leg for leg in legs if leg.get("action") == "SELL"), None)
+    long_leg = next((leg for leg in legs if leg.get("action") == "BUY"), None)
+    if not short_leg or not long_leg:
+        return None
+
+    credit_dollars = _safe_float(row.get("Credit (Realistic)"))
+    implied_vol = _safe_float(row.get("Implied Vol"))
+    if implied_vol is not None and implied_vol > 1.0:
+        implied_vol = implied_vol / 100.0
+
+    fill_mode = "natural" if pricing_mode == "natural" else "mid"
+    params = {
+        "symbol": symbol,
+        "spread_type": strategy,
+        "preset": "custom",
+        "stock_price": _safe_float(row.get("Spot")),
+        "short_strike": _safe_float(short_leg.get("strike")),
+        "long_strike": _safe_float(long_leg.get("strike")),
+        "credit": (round(credit_dollars / 100.0, 4) if credit_dollars is not None else None),
+        "fill_mode": fill_mode,
+        "contracts": int(_safe_float(row.get("Contracts")) or 1),
+        "dte": int(_safe_float(row.get("DTE")) or 0),
+        "iv_short": implied_vol,
+        "iv_long": implied_vol,
+    }
+    params = {key: value for key, value in params.items() if value is not None}
+    return url_for("spread_sim", **params)
+
+
 def build_ticket(symbol, strategy, expiry, trade_row):
     ticket = {
         "id": dt.datetime.now().strftime("%Y%m%d%H%M%S"),
@@ -4505,6 +4540,10 @@ def options_chain():
         )
         if results_df is not None:
             results_columns, results_rows = format_results(results_df)
+            raw_rows = results_df.to_dict(orient="records")
+            for idx, row in enumerate(results_rows):
+                raw_row = raw_rows[idx] if idx < len(raw_rows) else {}
+                row["_spread_sim_url"] = build_spread_sim_link(symbol, strategy, pricing_mode, raw_row)
             meta = {
                 "symbol": symbol,
                 "expiry": expiry,
