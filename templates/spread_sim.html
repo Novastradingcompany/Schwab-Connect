@@ -299,6 +299,7 @@
             <th>Stock Price</th>
             <th>Markers</th>
             <th>Zone</th>
+            <th>What Would I Do Here?</th>
             <th>Spread Value (Model)</th>
             <th>P/L (Model)</th>
             <th>Spread Value (Expiry)</th>
@@ -319,6 +320,7 @@
                 {% endif %}
               </td>
               <td>{{ row.zone }}</td>
+              <td>{{ row.action_summary }}</td>
               <td>${{ "{:,.2f}".format(row.spread_value_model) }}</td>
               <td class="{% if row.pnl_model > 0 %}pl-pos{% elif row.pnl_model < 0 %}pl-neg{% else %}pl-flat{% endif %}">
                 ${{ "{:,.2f}".format(row.pnl_model) }}
@@ -329,7 +331,7 @@
               </td>
             </tr>
           {% else %}
-            <tr><td colspan="6">No rows to display.</td></tr>
+            <tr><td colspan="8">No rows to display.</td></tr>
           {% endfor %}
         </tbody>
       </table>

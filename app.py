@@ -167,6 +167,33 @@ def _spread_sim_price_bounds(stock_price, short_strike, long_strike, preset):
     return round(upper, 2), round(lower, 2)
 
 
+def _spread_sim_action_summary(spread_type, zone, markers):
+    marker_set = set(markers or [])
+    if "75% Max Loss" in marker_set:
+        return "Hard stop or exit."
+    if "50% Max Loss" in marker_set:
+        return "Defend now or cut risk."
+    if "Short Strike Breach" in marker_set:
+        if spread_type == "bull_put":
+            return "Short strike breached. Roll or reduce delta."
+        return "Short strike breached. Roll up/out or reduce delta."
+    if "75% Target" in marker_set:
+        return "Take most profits."
+    if "50% Target" in marker_set:
+        return "Primary take-profit zone."
+    if "25% Target" in marker_set:
+        return "Consider scaling out."
+    if zone == "Max Profit Zone":
+        return "Hold or close for a clean win."
+    if zone == "Profit Zone":
+        return "Manage winner and watch targets."
+    if zone == "Loss Zone":
+        return "Monitor closely and prep defense."
+    if zone == "Max Loss Zone":
+        return "Exit or roll decisively."
+    return "Hold and reassess."
+
+
 def load_settings():
     defaults = {
         "profit_target_pct": 50,
@@ -3812,6 +3839,7 @@ def spread_sim():
                 if marker not in seen:
                     seen.append(marker)
             row["markers"] = seen
+            row["action_summary"] = _spread_sim_action_summary(spread_type, row["zone"], row["markers"])
 
     return render_template(
         "spread_sim.html",
