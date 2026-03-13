@@ -91,6 +91,32 @@ _TRANSACTIONS_CACHE_TTL = 900
 _TRANSACTIONS_FETCH_BUDGET_SEC = 20
 SPREAD_SIM_SAVE_TYPE = "credit_spread_simulation"
 SPREAD_SIM_SAVE_VERSION = 1
+SPREAD_SIM_PRESETS = {
+    "custom": {
+        "label": "Custom",
+        "description": "Keep your current assumptions and shape the ladder manually.",
+        "defaults": {},
+        "scenario": {"upside_pct": 0.03, "downside_pct": 0.03, "width_buffer": 2.0, "price_step": 0.5},
+    },
+    "conservative": {
+        "label": "Conservative",
+        "description": "Longer duration, natural fills, and a wider stress ladder for defensive planning.",
+        "defaults": {"fill_mode": "natural", "slippage": 0.10, "dte": 30, "contracts": 1, "iv_short": 0.22, "iv_long": 0.20},
+        "scenario": {"upside_pct": 0.06, "downside_pct": 0.12, "width_buffer": 3.0, "price_step": 1.0},
+    },
+    "income": {
+        "label": "Income",
+        "description": "Balanced biweekly setup with tighter ladder spacing for routine premium selling.",
+        "defaults": {"fill_mode": "mid", "slippage": 0.05, "dte": 14, "contracts": 1, "iv_short": 0.25, "iv_long": 0.23},
+        "scenario": {"upside_pct": 0.05, "downside_pct": 0.08, "width_buffer": 2.5, "price_step": 0.5},
+    },
+    "high_pop": {
+        "label": "High POP",
+        "description": "Favor distance from the short strike with a broader ladder and lower-vol assumptions.",
+        "defaults": {"fill_mode": "natural", "slippage": 0.08, "dte": 21, "contracts": 1, "iv_short": 0.20, "iv_long": 0.18},
+        "scenario": {"upside_pct": 0.04, "downside_pct": 0.15, "width_buffer": 3.5, "price_step": 1.0},
+    },
+}
 NOVA_MODEL_OPTIONS = [
     "gpt-4o",
     "gpt-4.1",
@@ -126,6 +152,19 @@ def _get_env(key):
     if not value:
         raise RuntimeError(f"Missing required env var: {key}")
     return value
+
+
+def _spread_sim_price_bounds(stock_price, short_strike, long_strike, preset):
+    profile = SPREAD_SIM_PRESETS.get(preset, SPREAD_SIM_PRESETS["custom"]).get("scenario", {})
+    width = max(abs(short_strike - long_strike), 0.01)
+    upside_pct = profile.get("upside_pct", 0.03)
+    downside_pct = profile.get("downside_pct", 0.03)
+    width_buffer = profile.get("width_buffer", 2.0)
+    higher_strike = max(short_strike, long_strike)
+    lower_strike = min(short_strike, long_strike)
+    upper = max(stock_price * (1.0 + upside_pct), higher_strike + width * width_buffer)
+    lower = min(stock_price * (1.0 - downside_pct), lower_strike - width * width_buffer)
+    return round(upper, 2), round(lower, 2)
 
 
 def load_settings():
@@ -3255,23 +3294,35 @@ def spread_sim():
     if spread_type not in {"bull_put", "bear_call"}:
         spread_type = "bull_put"
 
-    stock_price = _safe_float(val("stock_price"))
-    short_strike = _safe_float(val("short_strike"))
-    long_strike = _safe_float(val("long_strike"))
-    credit = _safe_float(val("credit"))
-    fill_mode = (val("fill_mode") or "mid").strip().lower()
+    raw_stock_price = val("stock_price")
+    raw_short_strike = val("short_strike")
+    raw_long_strike = val("long_strike")
+    raw_credit = val("credit")
+    raw_fill_mode = val("fill_mode")
+    raw_slippage = val("slippage")
+    raw_contracts = val("contracts")
+    raw_dte = val("dte")
+    raw_iv_short = val("iv_short")
+    raw_iv_long = val("iv_long")
+    raw_rate = val("rate")
+    raw_price_step = val("price_step")
+    stock_price = _safe_float(raw_stock_price)
+    short_strike = _safe_float(raw_short_strike)
+    long_strike = _safe_float(raw_long_strike)
+    credit = _safe_float(raw_credit)
+    fill_mode = (raw_fill_mode or "mid").strip().lower()
     if fill_mode not in {"mid", "natural"}:
         fill_mode = "mid"
     preset = (val("preset") or "custom").strip().lower()
-    if preset not in {"custom", "conservative", "income", "high_pop"}:
+    if preset not in SPREAD_SIM_PRESETS:
         preset = "custom"
-    slippage = _safe_float(val("slippage"))
-    contracts = int(_safe_float(val("contracts")) or 1)
-    dte = int(_safe_float(val("dte")) or 7)
-    iv_short = _safe_float(val("iv_short"))
-    iv_long = _safe_float(val("iv_long"))
-    rate = _safe_float(val("rate"))
-    price_step = _safe_float(val("price_step"))
+    slippage = _safe_float(raw_slippage)
+    contracts = int(_safe_float(raw_contracts) or 1)
+    dte = int(_safe_float(raw_dte) or 7)
+    iv_short = _safe_float(raw_iv_short)
+    iv_long = _safe_float(raw_iv_long)
+    rate = _safe_float(raw_rate)
+    price_step = _safe_float(raw_price_step)
 
     short_default = 582.5 if spread_type == "bull_put" else 602.5
     long_default = 580.0 if spread_type == "bull_put" else 605.0
@@ -3285,17 +3336,24 @@ def spread_sim():
     price_step = price_step if price_step is not None and price_step > 0 else 0.5
     slippage = slippage if slippage is not None and slippage >= 0 else 0.05
 
-    preset_defaults = {
-        "conservative": {"fill_mode": "natural", "slippage": 0.10, "dte": 30, "contracts": 1},
-        "income": {"fill_mode": "mid", "slippage": 0.05, "dte": 14, "contracts": 1},
-        "high_pop": {"fill_mode": "natural", "slippage": 0.08, "dte": 21, "contracts": 1},
-    }
-    if preset in preset_defaults:
-        defaults = preset_defaults[preset]
-        fill_mode = defaults["fill_mode"]
-        slippage = defaults["slippage"]
-        dte = defaults["dte"]
-        contracts = defaults["contracts"]
+    preset_profile = SPREAD_SIM_PRESETS.get(preset, SPREAD_SIM_PRESETS["custom"])
+    preset_defaults = preset_profile.get("defaults", {})
+    if raw_fill_mode in {None, ""}:
+        fill_mode = preset_defaults.get("fill_mode", fill_mode)
+    if raw_slippage in {None, ""}:
+        slippage = preset_defaults.get("slippage", slippage)
+    if raw_contracts in {None, ""}:
+        contracts = preset_defaults.get("contracts", contracts)
+    if raw_dte in {None, ""}:
+        dte = preset_defaults.get("dte", dte)
+    if raw_iv_short in {None, ""}:
+        iv_short = preset_defaults.get("iv_short", iv_short)
+    if raw_iv_long in {None, ""}:
+        iv_long = preset_defaults.get("iv_long", iv_long)
+    if raw_price_step in {None, ""}:
+        price_step = preset_profile.get("scenario", {}).get("price_step", price_step)
+
+    fill_mode = fill_mode if fill_mode in {"mid", "natural"} else "mid"
 
     contracts = max(1, contracts)
     dte = max(0, dte)
@@ -3324,11 +3382,7 @@ def spread_sim():
         credit_source = "estimated"
     entry_credit = quoted_credit if fill_mode == "mid" else max(quoted_credit - slippage, 0.0)
 
-    span_pad = max(width * 2, 2.0)
-    higher_strike = max(short_strike, long_strike)
-    lower_strike = min(short_strike, long_strike)
-    price_from_default = higher_strike + span_pad
-    price_to_default = lower_strike - span_pad
+    price_from_default, price_to_default = _spread_sim_price_bounds(stock_price, short_strike, long_strike, preset)
     price_from = _safe_float(request.args.get("price_from"))
     price_to = _safe_float(request.args.get("price_to"))
     price_from = price_from if price_from is not None else price_from_default
@@ -3491,7 +3545,7 @@ def spread_sim():
                             raise ValueError("Simulation file has invalid fill_mode. Must be mid or natural.")
                     if "preset" in restored:
                         restored_preset = str(restored.get("preset", "")).strip().lower()
-                        if restored_preset not in {"custom", "conservative", "income", "high_pop"}:
+                        if restored_preset not in SPREAD_SIM_PRESETS:
                             raise ValueError(
                                 "Simulation file has invalid preset. Must be custom, conservative, income, or high_pop."
                             )
@@ -3651,6 +3705,8 @@ def spread_sim():
         symbol=symbol,
         today=today.isoformat(),
         preset=preset,
+        preset_meta=SPREAD_SIM_PRESETS,
+        preset_description=preset_profile.get("description"),
         stock_price=stock_price,
         short_strike=short_strike,
         long_strike=long_strike,

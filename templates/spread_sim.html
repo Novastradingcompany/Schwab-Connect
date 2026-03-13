@@ -26,78 +26,83 @@
       </label>
       <label>
         Spread Type
-        <select name="spread_type">
+        <select id="spread-type" name="spread_type">
           <option value="bull_put" {% if spread_type == "bull_put" %}selected{% endif %}>Bull Put (Put Credit)</option>
           <option value="bear_call" {% if spread_type == "bear_call" %}selected{% endif %}>Bear Call (Call Credit)</option>
         </select>
       </label>
       <label>
         Preset
-        <select name="preset">
-          <option value="custom" {% if preset == "custom" %}selected{% endif %}>Custom</option>
-          <option value="conservative" {% if preset == "conservative" %}selected{% endif %}>Conservative</option>
-          <option value="income" {% if preset == "income" %}selected{% endif %}>Income</option>
-          <option value="high_pop" {% if preset == "high_pop" %}selected{% endif %}>High POP</option>
+        <select id="preset-select" name="preset">
+          {% for preset_key, meta in preset_meta.items() %}
+            <option value="{{ preset_key }}" {% if preset == preset_key %}selected{% endif %}>{{ meta.label }}</option>
+          {% endfor %}
         </select>
       </label>
+      <div class="strike-reminder" id="preset-description">
+        <strong>{{ preset_meta[preset].label }}:</strong> {{ preset_description }}
+      </div>
+      <div class="form-actions">
+        <button class="button" id="apply-preset" type="button">Apply Preset Defaults</button>
+      </div>
       <label>
         Stock Value (Now)
-        <input type="number" step="0.01" name="stock_price" value="{{ stock_price }}">
+        <input id="stock-price" type="number" step="0.01" name="stock_price" value="{{ stock_price }}">
       </label>
       <label>
         Short Strike {% if spread_type == "bull_put" %}(Sell Put){% else %}(Sell Call){% endif %}
-        <input type="number" step="0.01" name="short_strike" value="{{ short_strike }}" required>
+        <input id="short-strike" type="number" step="0.01" name="short_strike" value="{{ short_strike }}" required>
       </label>
       <label>
         Long Strike {% if spread_type == "bull_put" %}(Buy Put){% else %}(Buy Call){% endif %}
-        <input type="number" step="0.01" name="long_strike" value="{{ long_strike }}" required>
+        <input id="long-strike" type="number" step="0.01" name="long_strike" value="{{ long_strike }}" required>
       </label>
       <label>
         Net Credit (per spread)
-        <input type="number" step="0.01" min="0" name="credit" value="{{ credit }}" placeholder="Leave blank to estimate">
+        <input id="credit" type="number" step="0.01" min="0" name="credit" value="{{ credit }}" placeholder="Leave blank to estimate">
       </label>
       <label>
         Fill Mode
-        <select name="fill_mode">
+        <select id="fill-mode" name="fill_mode">
           <option value="mid" {% if fill_mode == "mid" %}selected{% endif %}>Mid</option>
           <option value="natural" {% if fill_mode == "natural" %}selected{% endif %}>Natural (less credit)</option>
         </select>
       </label>
       <label>
         Slippage (Natural, per spread)
-        <input type="number" step="0.01" min="0" name="slippage" value="{{ slippage }}">
+        <input id="slippage" type="number" step="0.01" min="0" name="slippage" value="{{ slippage }}">
       </label>
       <label>
         Contracts
-        <input type="number" step="1" min="1" name="contracts" value="{{ contracts }}" required>
+        <input id="contracts" type="number" step="1" min="1" name="contracts" value="{{ contracts }}" required>
       </label>
       <label>
         DTE (model)
-        <input type="number" step="1" min="0" name="dte" value="{{ dte }}">
+        <input id="dte" type="number" step="1" min="0" name="dte" value="{{ dte }}">
       </label>
       <label>
         IV Short
-        <input type="number" step="0.01" min="0.01" name="iv_short" value="{{ iv_short }}">
+        <input id="iv-short" type="number" step="0.01" min="0.01" name="iv_short" value="{{ iv_short }}">
       </label>
       <label>
         IV Long
-        <input type="number" step="0.01" min="0.01" name="iv_long" value="{{ iv_long }}">
+        <input id="iv-long" type="number" step="0.01" min="0.01" name="iv_long" value="{{ iv_long }}">
       </label>
       <label>
         Risk-Free Rate
-        <input type="number" step="0.001" min="0" name="rate" value="{{ rate }}">
+        <input id="rate" type="number" step="0.001" min="0" name="rate" value="{{ rate }}">
       </label>
       <label>
         Price From
-        <input type="number" step="0.01" name="price_from" value="{{ price_from }}">
+        <input id="price-from" type="number" step="0.01" name="price_from" value="{{ price_from }}">
       </label>
       <label>
         Price To
-        <input type="number" step="0.01" name="price_to" value="{{ price_to }}">
+        <input id="price-to" type="number" step="0.01" name="price_to" value="{{ price_to }}">
       </label>
       <label>
         Price Step
-        <input type="number" step="0.01" min="0.01" name="price_step" value="{{ price_step }}">
+        <input id="price-step" type="number" step="0.01" min="0.01" name="price_step" value="{{ price_step }}">
       </label>
       <div class="strike-reminders" aria-live="polite">
         <div class="strike-reminder">
@@ -254,6 +259,75 @@
         toggle.textContent = isHidden ? "Hide" : "Unhide";
         toggle.setAttribute("aria-expanded", isHidden ? "true" : "false");
       });
+    })();
+
+    (function () {
+      const presets = {{ preset_meta|tojson }};
+      const presetSelect = document.getElementById("preset-select");
+      const applyButton = document.getElementById("apply-preset");
+      const description = document.getElementById("preset-description");
+      if (!presetSelect || !applyButton || !description) return;
+
+      const fields = {
+        fill_mode: document.getElementById("fill-mode"),
+        slippage: document.getElementById("slippage"),
+        contracts: document.getElementById("contracts"),
+        dte: document.getElementById("dte"),
+        iv_short: document.getElementById("iv-short"),
+        iv_long: document.getElementById("iv-long"),
+        price_step: document.getElementById("price-step"),
+        stock_price: document.getElementById("stock-price"),
+        short_strike: document.getElementById("short-strike"),
+        long_strike: document.getElementById("long-strike"),
+        price_from: document.getElementById("price-from"),
+        price_to: document.getElementById("price-to")
+      };
+
+      function roundTo(value, decimals) {
+        const factor = Math.pow(10, decimals);
+        return Math.round(value * factor) / factor;
+      }
+
+      function renderDescription() {
+        const meta = presets[presetSelect.value] || presets.custom;
+        description.innerHTML = "<strong>" + meta.label + ":</strong> " + meta.description;
+      }
+
+      function applyScenarioBounds(meta) {
+        const stockPrice = parseFloat(fields.stock_price.value);
+        const shortStrike = parseFloat(fields.short_strike.value);
+        const longStrike = parseFloat(fields.long_strike.value);
+        if (!Number.isFinite(stockPrice) || !Number.isFinite(shortStrike) || !Number.isFinite(longStrike)) return;
+        const scenario = meta.scenario || {};
+        const width = Math.max(Math.abs(shortStrike - longStrike), 0.01);
+        const upper = Math.max(
+          stockPrice * (1 + (scenario.upside_pct || 0)),
+          Math.max(shortStrike, longStrike) + width * (scenario.width_buffer || 2)
+        );
+        const lower = Math.min(
+          stockPrice * (1 - (scenario.downside_pct || 0)),
+          Math.min(shortStrike, longStrike) - width * (scenario.width_buffer || 2)
+        );
+        fields.price_from.value = roundTo(upper, 2).toFixed(2);
+        fields.price_to.value = roundTo(lower, 2).toFixed(2);
+      }
+
+      presetSelect.addEventListener("change", renderDescription);
+      applyButton.addEventListener("click", function () {
+        const meta = presets[presetSelect.value] || presets.custom;
+        const defaults = meta.defaults || {};
+        Object.keys(defaults).forEach(function (key) {
+          if (fields[key]) {
+            fields[key].value = defaults[key];
+          }
+        });
+        if (meta.scenario && fields.price_step) {
+          fields.price_step.value = meta.scenario.price_step;
+        }
+        applyScenarioBounds(meta);
+      });
+
+      renderDescription();
     })();
   </script>
 {% endblock %}
