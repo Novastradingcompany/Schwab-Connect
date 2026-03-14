@@ -169,10 +169,12 @@ def _spread_sim_price_bounds(stock_price, short_strike, long_strike, preset):
 
 def _spread_sim_action_summary(spread_type, zone, markers):
     marker_set = set(markers or [])
-    if "75% Max Loss" in marker_set:
+    if "3.0x Credit Stop" in marker_set:
         return "Hard stop or exit."
-    if "50% Max Loss" in marker_set:
+    if "2.5x Credit Stop" in marker_set:
         return "Defend now or cut risk."
+    if "2.0x Credit Stop" in marker_set:
+        return "Debit stop hit. Tighten risk."
     if "Short Strike Breach" in marker_set:
         if spread_type == "bull_put":
             return "Short strike breached. Roll or reduce delta."
@@ -3487,12 +3489,14 @@ def spread_sim():
             "remaining_value_per_spread": round(max(entry_credit * (1.0 - (pct / 100.0)), 0.0), 2),
         })
     defense_lines = []
-    for pct in (50, 75):
-        stop_loss_amount = max_loss * (pct / 100.0)
+    for multiple in (2.0, 2.5, 3.0):
+        stop_debit_per_spread = min(entry_credit * multiple, width)
+        stop_loss_amount = max((stop_debit_per_spread - entry_credit) * 100.0 * contracts, 0.0)
         defense_lines.append({
-            "label": f"{pct}% Max Loss",
-            "kind": "loss_stop",
-            "pct": pct,
+            "label": f"{multiple:.1f}x Credit Stop",
+            "kind": "debit_stop",
+            "multiple": multiple,
+            "stop_debit_per_spread": round(stop_debit_per_spread, 2),
             "stop_loss_amount": round(stop_loss_amount, 2),
             "pnl_threshold": round(-stop_loss_amount, 2),
         })
@@ -3533,8 +3537,8 @@ def spread_sim():
     for target in profit_targets:
         target["hit_now"] = current_pnl_model >= target["target_profit"] - 1e-9
     for line in defense_lines:
-        if line["kind"] == "loss_stop":
-            line["hit_now"] = current_pnl_model <= line["pnl_threshold"] + 1e-9
+        if line["kind"] == "debit_stop":
+            line["hit_now"] = current_spread_value_model >= line["stop_debit_per_spread"] - 1e-9
         else:
             line["hit_now"] = short_strike_breached_now
 
@@ -3829,9 +3833,9 @@ def spread_sim():
         breach_idx = min(range(len(rows)), key=lambda idx: abs(rows[idx]["stock_price"] - short_strike))
         rows[breach_idx]["markers"].append("Short Strike Breach")
         for line in defense_lines:
-            if line["kind"] != "loss_stop":
+            if line["kind"] != "debit_stop":
                 continue
-            stop_idx = min(range(len(rows)), key=lambda idx: abs(rows[idx]["pnl_model"] - line["pnl_threshold"]))
+            stop_idx = min(range(len(rows)), key=lambda idx: abs(rows[idx]["spread_value_model"] - line["stop_debit_per_spread"]))
             rows[stop_idx]["markers"].append(line["label"])
         for row in rows:
             seen = []

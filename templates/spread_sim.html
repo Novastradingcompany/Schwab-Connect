@@ -269,9 +269,10 @@
       {% for line in defense_lines %}
         <div class="pl-summary-card">
           <div class="metric-label">{{ line.label }}</div>
-          {% if line.kind == "loss_stop" %}
-            <div class="metric-value pl-neg">${{ "{:,.2f}".format(line.stop_loss_amount) }}</div>
-            <div class="pl-summary-note">Model stop if P/L falls to {{ "{:,.2f}".format(line.pnl_threshold) }}</div>
+          {% if line.kind == "debit_stop" %}
+            <div class="metric-value pl-neg">${{ "{:,.2f}".format(line.stop_debit_per_spread) }}</div>
+            <div class="pl-summary-note">Buyback debit per spread</div>
+            <div class="pl-summary-note">Model P/L near {{ "{:,.2f}".format(line.pnl_threshold) }}</div>
           {% else %}
             <div class="metric-value">${{ "{:,.2f}".format(line.trigger_price) }}</div>
             <div class="pl-summary-note">
