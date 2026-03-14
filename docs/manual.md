@@ -1,236 +1,553 @@
 # Nova Schwab Manual
 
+Last updated: 2026-03-13
+
 ## 1) What This App Does
 
 Nova Schwab is a web dashboard for:
-- Viewing Schwab account and positions data
-- Reviewing yearly summary across open + closed activity
-- Scanning options strategies (bull put, bear call, iron condor)
-- Managing a watchlist and draft tickets
-- Logging and editing a trade journal over time
-- Running a separate Movers Agent and adding picks to watchlist
-- Using Nova (LLM assistant) to explain or analyze scan output
+- Viewing Schwab account, cash, position, and risk data
+- Scanning options strategies from Schwab chains
+- Reviewing open put spreads with live scenario columns
+- Planning trades in the credit spread simulator
+- Managing a watchlist, movers workflow, and draft tickets
+- Monitoring alerts with rule-based exit checks
+- Logging trades in a journal and reviewing closed-trade stats
+- Using Nova for chain analysis, filter suggestions, and chat
 
 This app is advisory-only. It does not place orders automatically.
 
 ---
 
-## 2) Access and Login
+## 2) Main Navigation
 
-1. Open the dashboard URL.
-2. Log in with the app username/password.
-3. Use the top navigation to move between pages.
+Top row pages:
+- `Overview`
+- `Options Chain`
+- `Open Options`
+- `Positions`
+- `Alerts`
+- `Watchlist`
+- `Movers Agent`
+- `Nova`
 
-If login is failing, verify `AUTH_USERNAME` and `AUTH_PASSWORD_HASH` (or `AUTH_PASSWORD`) in environment config.
+Second row pages:
+- `Spread Sim`
+- `Risk`
+- `Summary`
+- `Journal`
+- `Stats`
+- `Tools`
+- `Manual`
+- `Tickets`
 
 ---
 
-## 3) Token and Schwab Connectivity
+## 3) Access and Login
+
+1. Open the dashboard URL.
+2. Log in with the app username/password.
+3. Use the two-row top navigation to move between workflows.
+
+If login is failing, verify:
+- `AUTH_USERNAME`
+- `AUTH_PASSWORD_HASH` or `AUTH_PASSWORD`
+
+---
+
+## 4) Schwab Token and Connectivity
 
 The app needs a valid Schwab OAuth token.
 
-### Standard token refresh flow
+### Standard refresh flow
 
 1. Run:
    ```powershell
    python connect.py
    ```
 2. Complete Schwab auth.
-3. Paste redirect URL or code when prompted.
-4. Confirm `token.json` is updated.
-5. Update Render env (`TOKEN_JSON_B64` or `TOKEN_JSON`) and redeploy.
+3. Paste the redirect URL or code immediately when prompted.
+4. Confirm `token.json` is updated locally.
+5. Update deployment env with `TOKEN_JSON_B64` or `TOKEN_JSON`.
+6. Redeploy if you need the new token to survive restart.
 
 ### Important notes
 
-- Authorization codes expire quickly. Paste immediately.
-- Keep token secrets private.
-- If both `TOKEN_JSON` and `TOKEN_JSON_B64` are present, the app selects the newer payload.
+- Authorization codes expire quickly.
+- Runtime refresh from the app updates the current running instance only.
+- To persist token state across restart/redeploy, update Render env `TOKEN_JSON_B64`.
+- If both `TOKEN_JSON` and `TOKEN_JSON_B64` exist, the app uses the newer payload.
 
 ---
 
-## 4) Options Chain Scanner (`/options`)
+## 5) Overview
+
+Use `Overview` as the landing page for account-level snapshot data. If Schwab connectivity is degraded, check `Tools` next.
+
+---
+
+## 6) Options Chain (`/options`)
 
 This is the main strategy scanner page.
 
-### Required inputs
+### Inputs
 
 - `Symbol`
 - `Expiration`
 - `Strategy`: `Bull Put`, `Bear Call`, or `Iron Condor`
-- `Contracts`
-
-### Risk/filter inputs
-
 - `Max Width`
 - `Min POP (%)`
+- `Contracts`
+- `Pricing mode`: `Mid`, `Natural (Bid/Ask)`, or `Custom limit`
+- `Custom limit (per spread)`
 - `Cash Balance`
 - `Max Loss`
-- `Show raw results` (ignores filter cutoffs)
+- `Show raw results`
+- `Auto-refresh (60s)`
 
-### New pricing controls
+### What the page does
 
-- `Pricing mode`
-  - `Mid`: uses midpoint for each leg
-  - `Natural (Bid/Ask)`: sell at bid, buy at ask (more conservative)
-  - `Custom limit`: uses your entered net credit per spread
-- `Custom limit (per spread)`
-  - Enter format like `0.46` (per 1 spread)
-  - Internally converted to dollars per spread (`0.46 * 100 = 46`)
+- Pulls the Schwab chain for the selected expiry
+- Computes filtered trade candidates
+- Shows a research snapshot for the symbol
+- Shows market regime context
+- Supports Nova actions for the full chain or a selected row
 
-### Credit columns in results
+### Nova actions on this page
 
-- `Credit (Realistic)`: active pricing basis from selected mode
-- `Credit (Mid $)`: per-spread credit at midpoint
-- `Credit (Natural $)`: per-spread credit at natural fill
-- `Total Credit ($)`: active per-spread credit times contracts
+- `Ask Nova about this chain`
+- `Suggest filters`
+- `Explain selected trade`
+- `Create trade ticket`
 
-Use `Custom limit` when you want scanner math to match your Schwab ticket limit exactly.
+### Spread simulator handoff
 
----
+For `Bull Put` and `Bear Call`, each row includes an `Open` link in the `Sim` column. This passes the selected trade into `Spread Sim`.
 
-## 5) Nova Actions on Options Page
+### Pricing notes
 
-From the scan results table:
-- Select a trade row
-- Use one of:
-  - `Ask Nova about this chain`
-  - `Suggest filters`
-  - `Explain selected trade`
-  - `Create trade ticket`
-
-Nova explanation uses the selected row’s numeric fields (`Total Credit`, `Max Loss`, `Contracts`, `Breakeven`) plus current pricing mode context.
+- `Mid` uses midpoint pricing
+- `Natural` uses bid/ask style pricing
+- `Custom limit` lets scanner math match your intended ticket credit exactly
 
 ---
 
-## 6) Movers Agent (`/movers-agent`)
+## 7) Open Options (`/options-open`)
 
-This is a separate workflow from the options scanner.
-
-### Purpose
-
-- Rank symbols from a curated optionable universe
-- Return top names
-- Let you check symbols and add them to watchlist
+Use this page to review live bull put spreads already open in the account.
 
 ### Inputs
 
-- `Lookback (trading days)`
-- `Return count`
-- `Max scan time (seconds)`
+- `Interval ($)`
+- `Range (+/- steps)`
+- `Scenario Pricing`
+  - `Model (Black-Scholes)`
+  - `Expiration Payoff`
 
-### Outputs
+### Output
 
-- Snapshot metadata (time, scanned count, timeout status)
-- Ranked table with checkbox per symbol
-- `Add Checked To Watchlist` button
+The table shows:
+- underlying and expiry
+- short and long put symbols
+- strikes and width
+- quantity
+- entry credit
+- current spread mark
+- underlying last
+- unrealized P/L and P/L %
+- breakeven
+- scenario P/L columns around the short strike
 
-Universe source file:
+---
+
+## 8) Positions (`/positions`)
+
+Use this page for a live cross-account position table.
+
+Columns include:
+- account
+- symbol
+- asset type
+- quantity
+- average price
+- market value
+- P/L and P/L %
+- DTE
+- last, mark, delta, theta, IV
+- action / why / note
+
+This is the broadest open-position view. `Alerts` uses similar data but only shows positions that meet active exit rules.
+
+---
+
+## 9) Alerts (`/alerts`)
+
+This page defines your monitoring rules and shows positions needing attention.
+
+### Rule settings
+
+- `Profit Target (% of credit)`
+- `Max Loss (% of max loss)`
+- `Time-based Exit (DTE)`
+- `Nova judgment notes`
+- `Polling interval (minutes)`
+- `Monitor only during market hours`
+- `Market open`
+- `Market close`
+- `Monitor weekdays only`
+- `Market holidays`
+- `Nova model`
+- `Nova role`
+- `Movers lookback`
+- `Movers count`
+- `Include current positions in movers universe`
+- `Include S&P 500 universe`
+- `Movers scan timeout`
+- `Movers universe`
+
+### Output
+
+The `Action Required` table shows only rows that meet alert conditions, with:
+- position metrics
+- greeks / IV / DTE
+- action
+- why
+- note
+
+If email is not configured, the page shows a warning.
+
+---
+
+## 10) Watchlist (`/watchlist`)
+
+Use the watchlist for fast idea triage.
+
+### Supported actions
+
+- Add a symbol
+- Remove a symbol
+- Jump straight into `Options Chain` with `Scan`
+- Run `Scan All` across the current watchlist
+
+### Watchlist scan inputs
+
+- `Strategy`
+- `Max Width`
+- `Min POP (%)`
+- `Contracts`
+- `Cash Balance`
+- `Max Loss`
+- `Expiration` (optional)
+- `Show raw results`
+
+### Watchlist scan output
+
+Each row shows:
+- symbol
+- expiry
+- spot
+- trades found
+- top trade
+- error, if any
+
+---
+
+## 11) Movers Agent (`/movers-agent`)
+
+This is a ranking workflow separate from the options scanner.
+
+### Purpose
+
+- Scan a curated optionable universe
+- Rank names by recent movement
+- Review scan errors separately
+- Add selected symbols to the watchlist
+
+### Typical inputs
+
+- lookback window
+- result count
+- max scan time
+
+### Typical outputs
+
+- snapshot metadata
+- ranked results
+- timeout/scanned-count status
+- scan error section
+
+Primary files used by this workflow:
 - `optionable_universe.json`
-
-Snapshot persistence file:
 - `movers_snapshot.json`
 
 ---
 
-## 7) Watchlist (`/watchlist`)
+## 12) Spread Sim (`/spread-sim`)
 
-Supports:
-- Add/remove symbols
-- Scan all watchlist symbols with selected strategy settings
-- Jump from chip to options scan page
+This page was added after the original manual and is now a core workflow.
+
+Use it to model a `Bull Put` or `Bear Call` vertical before entry.
+
+### Inputs
+
+- `Symbol`
+- `Spread Type`
+- `Preset`
+- `Stock Value (Now)`
+- `Short Strike`
+- `Long Strike`
+- `Net Credit (per spread)`
+- `Fill Mode`
+- `Slippage (Natural, per spread)`
+- `Contracts`
+- `DTE (model)`
+- `IV Short`
+- `IV Long`
+- `Risk-Free Rate`
+- `Price From`
+- `Price To`
+- `Price Step`
+
+### Presets
+
+Presets apply default scenario values and can also reset the simulation bounds. Use `Apply Preset Defaults` to load those values into the form.
+
+### Main actions
+
+- `Run Simulation`
+- `Export Setup to Watchlist`
+- `Export Setup to Ticket`
+- `Save Simulation File`
+- `Print`
+- `Load Simulation File`
+
+### What the page shows
+
+- Trade Summary
+- return on risk
+- risk/reward ratio
+- breakeven
+- current spot model P/L
+- quoted credit vs entry credit used
+- POP score
+- current spread value
+- model inputs
+- spot-to-short-strike buffer
+
+### Analysis sections
+
+- `How This Is Calculated`
+- `Key Levels`
+- `Profit Target Markers`
+- `Stop And Defense Lines`
+- `Vertical Scenario Ladder`
+
+### Save/load notes
+
+- Saved files are JSON
+- The page validates file type and schema version on load
+- Older versions can still load with a warning when supported
+
+### Handoff notes
+
+- `Options Chain` can open a selected spread directly in this page
+- `Export Setup to Ticket` creates a draft ticket
+- `Export Setup to Watchlist` pushes the setup into watchlist storage
 
 ---
 
-## 8) Alerts (`/alerts`)
+## 13) Risk Dashboard (`/risk`)
 
-Configures:
-- Profit target, max loss, DTE exit rules
-- Polling interval and market-hours controls
-- Nova model/role settings
-- Movers settings used in Nova chat context
+Use this page for portfolio exposure review.
 
----
+It shows:
+- total account value
+- invested market value
+- cash and cash investments
+- total P/L
+- count of options with DTE <= 7
+- exposure by asset type
+- top symbols by exposure
+- largest positions
 
-## 9) Tools (`/tools`)
-
-Operational page for:
-- Token status checks
-- Manual refresh call path
-- Other system utilities and diagnostics
-- Transaction reconcile debug link (`/debug/txn-reconcile`)
-
-Use this page first when Schwab data appears stale or unavailable.
+This is the fastest page for concentration checks.
 
 ---
 
-## 10) Yearly Summary (`/summary`)
+## 14) Summary (`/summary`)
 
 Purpose:
-- Show open + closed activity grouped by symbol and period
-- Split sections: Stocks, Options, Cash, Other
+- show open + closed P/L grouped by symbol and period
+- split results into `Stocks`, `Options`, `Cash`, and `Other Assets`
+- show subtotals plus a combined total
 
-Filters:
-- Period (`week`, `month`, `quarter`, `year`)
-- Status (`all`, `open`, `closed`)
-- Year and month filters
+### Filters
 
-Notes:
+- `Period`: `week`, `month`, `quarter`, `year`
+- `Status`: `all`, `open`, `closed`
+- `Sort`: `profit`, `loss`, `symbol`
+- `Year`
+- `Month`
+
+### Notes
+
 - Open rows come from current positions and balances.
 - Closed rows come from Schwab transactions.
-- Schwab option close activity can be inconsistent in API payload fields; use reconcile debug for validation when totals look off.
+- The page shows summary cache freshness when available.
+- If option totals look wrong, compare against `Transaction Reconcile Debug`.
 
 ---
 
-## 11) Transaction Reconcile Debug (`/debug/txn-reconcile`)
+## 15) Transaction Reconcile Debug (`/debug/txn-reconcile`)
 
-Use this page to compare raw Schwab transaction fields against summary math.
+Use this page when summary totals do not match Schwab transaction history.
 
-Inputs:
-- Symbol text filter (for example `SNDK`)
-- Asset filter (`OPTION`, `STOCK`, `CASH`, `ALL`)
-- Start/end date
-- Include mode (closed-summary rows only vs all matching rows)
+### Inputs
 
-Outputs:
-- Totals for chosen P/L, `netAmount`, item cashflow, transfer cashflow, description cashflow
-- Per-symbol totals
-- Full row view with txn/account identifiers and raw field breakdown
+- symbol filter
+- asset filter
+- start date
+- end date
+- include mode
 
-Use this when summary totals do not match Schwab Transaction History.
+### Outputs
 
----
-
-## 12) Trade Journal (`/journal`)
-
-Journal supports full lifecycle logging:
-- Add a trade at entry
-- Edit the same trade later (status, exit date, realized P/L, notes, outcome)
-- Delete trade
-
-Edit flow:
-1. Click `Edit` on a row.
-2. Form pre-fills with existing values.
-3. Click `Update Trade` to save.
-4. Use `Cancel Edit` to leave unchanged.
-
-Gate behavior:
-- Open trades still require gate checks to pass.
-- Closed/expired updates can be recorded with final outcome and P/L.
+- summary totals by cashflow method
+- per-symbol totals
+- raw transaction-level rows
+- identifiers and field breakdown used by the summary logic
 
 ---
 
-## 13) Persistent Data on Render (Important)
+## 16) Journal (`/journal`)
 
-Without persistent storage, JSON files reset on redeploy.
+Use the journal to record trade quality, execution discipline, and outcome.
 
-Set up persistent disk:
-1. Open your Render service settings.
-2. Add a persistent disk.
-3. Mount path: `/var/data`
-4. Add env var: `DATA_DIR=/var/data`
-5. Redeploy
+### Supported workflows
 
-Files written through this path include:
+- add a trade
+- edit an existing trade
+- update status to `open`, `closed`, or `expired`
+- record realized P/L and outcome
+- delete a trade
+
+### Core fields
+
+- symbol
+- strategy
+- status
+- entry / expiry / exit dates
+- max loss
+- target profit
+- realized P/L
+- outcome
+- thesis
+- notes
+
+### Entry gate checklist
+
+Open trades require the checklist to pass:
+- setup matches proven criteria
+- max loss within cap
+- POP / quality threshold met
+- position size valid
+- no rule violations
+
+The logged trades table also shows whether each trade passed or failed the gate.
+
+---
+
+## 17) Stats (`/journal/stats`)
+
+This page summarizes closed-trade performance from the journal.
+
+It includes:
+- closed trades count
+- win rate
+- net P/L
+- average return
+- max drawdown
+- breakdown by strategy
+- breakdown by month
+- closed trades detail by symbol/date
+
+Use this page together with `Journal` to evaluate repeatability.
+
+---
+
+## 18) Tickets (`/tickets`)
+
+Tickets are draft trade previews. Order submission is not wired yet.
+
+### What you can do
+
+- review draft tickets created from `Options Chain` or `Spread Sim`
+- see available account numbers
+- inspect top trade summary and legs
+- `Confirm`
+- `Send`
+- `Clear`
+
+Treat this page as a staging area, not an execution system.
+
+---
+
+## 19) Nova Chat (`/nova`)
+
+This is the general chat page for advisory-only guidance.
+
+### Actions
+
+- ask free-form questions
+- run `Find Movers`
+- clear chat history
+
+`Find Movers` uses the movers-related settings from `Alerts`.
+
+---
+
+## 20) Tools (`/tools`)
+
+Use this page for system health, exports, and operational actions.
+
+### Sections
+
+- `Monitor Status`
+- `Timezone`
+- `Exports`
+- `Schwab Status Check`
+- `Error Log`
+
+### Available actions
+
+- save app timezone
+- export alerts CSV
+- export tickets CSV
+- export summary CSV
+- open transaction reconcile debug
+- refresh Schwab token
+- show `TOKEN_JSON_B64`
+- copy `TOKEN_JSON_B64`
+- run Schwab status check
+- send test email
+- clear error log
+
+Use `Tools` first when data looks stale, alerts appear quiet, or token state is unclear.
+
+---
+
+## 21) Persistent Data on Render
+
+Without persistent storage, JSON-backed app data resets on redeploy.
+
+### Recommended setup
+
+1. Add a persistent disk in Render.
+2. Mount it at `/var/data`.
+3. Set env var `DATA_DIR=/var/data`.
+4. Redeploy.
+
+### Common persisted files
+
 - `settings.json`
 - `alerts.json`
 - `alerts_state.json`
@@ -243,67 +560,91 @@ Files written through this path include:
 
 ---
 
-## 14) Common Troubleshooting
+## 22) Common Troubleshooting
 
 ### A) `refresh_token_authentication_error` or `unsupported_token_type`
 
 Cause:
-- Expired/invalid token payload
+- expired or invalid token payload
 
 Fix:
-1. Run `python connect.py` and generate fresh token
-2. Update token env var in deployment
-3. Redeploy
+1. Run `python connect.py`
+2. generate a fresh token
+3. update deployment env
+4. redeploy if persistence is needed
 
-### B) `502` / worker timeout on heavy scans
+### B) Scanner credit does not match Schwab ticket
 
 Cause:
-- Request path doing too much work in one request
+- different pricing assumption
 
 Fix:
-- Use Movers Agent workflow for ranking, not full-universe request scans
-- Reduce scan timeouts / universe size if needed
+- use `Pricing mode = Custom limit` in `Options Chain`
+- or match `Fill Mode` and slippage assumptions in `Spread Sim`
 
-### C) Scanner credit doesn’t match Schwab ticket
+### C) Movers results are too small
 
 Cause:
-- Different pricing assumption
+- timeout reached early
 
 Fix:
-- Use `Pricing mode = Custom limit` and enter the same limit used in Schwab ticket
+- increase movers scan timeout
+- reduce universe scope
+- review scan errors in `Movers Agent`
 
-### D) Very small list from movers results
+### D) Summary totals look wrong
 
 Cause:
-- Timeout reached early
+- Schwab transaction fields can vary by asset and activity type
 
 Fix:
-- Increase `Max scan time (seconds)` on Movers Agent
+- open `Transaction Reconcile Debug`
+- compare raw cashflow fields against summary math
+
+### E) Runtime token refresh worked, but app lost it after restart
+
+Cause:
+- token was refreshed in memory only
+
+Fix:
+- copy the `TOKEN_JSON_B64` value from `Tools`
+- update Render env
+- redeploy
 
 ---
 
-## 15) File Quick Reference
+## 23) File Quick Reference
 
 - Main app: `app.py`
-- Options templates: `templates/options.html`
-- Movers page template: `templates/movers_agent.html`
-- Summary page template: `templates/summary.html`
-- Journal page template: `templates/trade_journal.html`
-- Reconcile debug template: `templates/txn_reconcile.html`
-- Layout/nav: `templates/layout.html`
-- Styles: `static/styles.css`
-- Universe file: `optionable_universe.json`
-- Snapshot file: `movers_snapshot.json`
-- Settings storage: `settings.json`
-- Watchlist storage: `watchlist.json`
 - Token helper: `connect.py`
+- Manual source: `docs/manual.md`
+- Layout/nav: `templates/layout.html`
+- Options scanner: `templates/options.html`
+- Open options: `templates/options_open.html`
+- Positions: `templates/positions.html`
+- Alerts: `templates/alerts.html`
+- Watchlist: `templates/watchlist.html`
+- Movers page: `templates/movers_agent.html`
+- Spread simulator: `templates/spread_sim.html`
+- Risk dashboard: `templates/risk.html`
+- Summary page: `templates/summary.html`
+- Journal page: `templates/trade_journal.html`
+- Stats page: `templates/trade_stats.html`
+- Tickets page: `templates/tickets.html`
+- Tools page: `templates/tools.html`
+- Reconcile debug: `templates/txn_reconcile.html`
+- Universe file: `optionable_universe.json`
+- Movers snapshot: `movers_snapshot.json`
 
 ---
 
-## 16) Recommended Weekly Workflow
+## 24) Recommended Weekly Workflow
 
-1. Open `Movers Agent`, run weekly scan, add selected names to watchlist.
-2. Open `Options Chain` for each symbol and scan spreads.
-3. Set pricing mode to match execution intent (`Custom limit` if ticket-driven).
-4. Use Nova explain/analyze for final review.
-5. Create ticket drafts.
+1. Run `Movers Agent` and add selected names to the watchlist.
+2. Review names in `Watchlist` and open `Options Chain` scans.
+3. For promising spreads, open `Spread Sim` from the results table.
+4. Use the simulator to review target markers, defense lines, and ladder scenarios.
+5. Export the best setup to `Tickets`.
+6. Log the trade in `Journal`.
+7. Monitor live positions from `Alerts`, `Open Options`, `Positions`, and `Risk`.
+8. Review `Summary` and `Stats` at the end of the week or month.
