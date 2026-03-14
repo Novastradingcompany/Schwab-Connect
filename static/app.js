@@ -20,6 +20,38 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    const topScroller = tableWrap.previousElementSibling?.matches(".table-scroll-top[data-sync-scroll='top']")
+      ? tableWrap.previousElementSibling
+      : null;
+    if (topScroller) {
+      const topTrack = topScroller.querySelector(".table-scroll-track");
+      const syncTrackWidth = () => {
+        if (topTrack) {
+          topTrack.style.width = `${table.scrollWidth}px`;
+        }
+      };
+      let syncingTop = false;
+      let syncingBottom = false;
+      syncTrackWidth();
+      topScroller.addEventListener("scroll", () => {
+        if (syncingTop) {
+          syncingTop = false;
+          return;
+        }
+        syncingBottom = true;
+        tableWrap.scrollLeft = topScroller.scrollLeft;
+      });
+      tableWrap.addEventListener("scroll", () => {
+        if (syncingBottom) {
+          syncingBottom = false;
+          return;
+        }
+        syncingTop = true;
+        topScroller.scrollLeft = tableWrap.scrollLeft;
+      });
+      window.addEventListener("resize", syncTrackWidth);
+    }
+
     const hideColumn = (index) => {
       const header = table.querySelectorAll("thead th")[index];
       if (!header) {
@@ -87,6 +119,12 @@ document.addEventListener("DOMContentLoaded", () => {
           });
           toggleBar.appendChild(button);
         });
+        if (topScroller) {
+          const topTrack = topScroller.querySelector(".table-scroll-track");
+          if (topTrack) {
+            topTrack.style.width = `${table.scrollWidth}px`;
+          }
+        }
       };
 
       table.querySelectorAll("thead th").forEach((th, index) => {

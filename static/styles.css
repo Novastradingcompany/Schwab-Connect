@@ -365,6 +365,16 @@ textarea {
   overflow-x: auto;
 }
 
+.table-scroll-top {
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin-bottom: 8px;
+}
+
+.table-scroll-track {
+  height: 1px;
+}
+
 .nova-response {
   white-space: pre-wrap;
   line-height: 1.5;
