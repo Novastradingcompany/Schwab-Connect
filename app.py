@@ -1832,6 +1832,67 @@ def build_spread_sim_link(symbol, strategy, pricing_mode, row):
     return url_for("spread_sim", **params)
 
 
+def build_management_plan(ticket, trade_row=None, assumptions=None):
+    trade = trade_row or (ticket.get("trade") if isinstance(ticket, dict) else {}) or {}
+    details = assumptions or (ticket.get("assumptions") if isinstance(ticket, dict) else {}) or {}
+    contracts = int(
+        _safe_float(trade.get("Contracts"))
+        or _safe_float(details.get("contracts"))
+        or len((ticket or {}).get("legs", [])) // 2
+        or 1
+    )
+    credit_total = _safe_float(trade.get("Total Credit ($)"))
+    if credit_total is None:
+        entry_credit_per_spread = _safe_float(details.get("entry_credit_per_spread"))
+        if entry_credit_per_spread is not None:
+            credit_total = entry_credit_per_spread * 100.0 * contracts
+    if credit_total is None:
+        realistic_credit = _safe_float(trade.get("Credit (Realistic)"))
+        if realistic_credit is not None:
+            if realistic_credit > 10:
+                credit_total = realistic_credit * contracts
+            else:
+                credit_total = realistic_credit * 100.0 * contracts
+    max_loss = _safe_float(trade.get("Max Loss ($)") or trade.get("Max Loss"))
+    if max_loss is None:
+        max_loss = _safe_float(details.get("max_loss"))
+    if credit_total is None:
+        credit_total = 0.0
+    if max_loss is None:
+        max_loss = 0.0
+
+    profit_target_pct = 50
+    profit_target_amount = round(credit_total * (profit_target_pct / 100.0), 2)
+    debit_stops = []
+    for multiple in (2.0, 2.5, 3.0):
+        debit_stops.append({
+            "label": f"{multiple:.1f}x credit",
+            "multiple": multiple,
+            "buyback_debit_total": round(credit_total * multiple, 2),
+        })
+    strategy = str((ticket or {}).get("strategy") or "").lower()
+    if strategy == "bull_put":
+        breach_rule = "If spot breaks below the short strike, defend or exit. Do not wait for max loss."
+    elif strategy == "bear_call":
+        breach_rule = "If spot breaks above the short strike, defend or exit. Do not wait for max loss."
+    else:
+        breach_rule = "If the short strike is breached, defend or exit quickly."
+
+    return {
+        "profit_target_pct": profit_target_pct,
+        "profit_target_amount": profit_target_amount,
+        "debit_stops": debit_stops,
+        "breach_rule": breach_rule,
+        "hard_max_loss": round(max_loss, 2),
+        "hard_rule": "Do not hold to full loss. A small win is better than a full loser.",
+        "summary": (
+            f"Take profit near ${profit_target_amount:,.2f}. "
+            f"Exit or defend on short-strike breach. "
+            f"Primary debit stop at ${debit_stops[0]['buyback_debit_total']:,.2f}."
+        ),
+    }
+
+
 def build_ticket(symbol, strategy, expiry, trade_row):
     ticket = {
         "id": dt.datetime.now().strftime("%Y%m%d%H%M%S"),
@@ -1850,6 +1911,7 @@ def build_ticket(symbol, strategy, expiry, trade_row):
         ticket["legs"] = legs
     else:
         ticket["legs"] = parse_legs_from_trade(trade_row.get("Trade"))
+    ticket["management_plan"] = build_management_plan(ticket, trade_row=trade_row)
     return ticket
 
 
@@ -3757,6 +3819,11 @@ def spread_sim():
                         "max_profit": round(max_profit, 2),
                         "max_loss": round(max_loss, 2),
                     }
+                    ticket["management_plan"] = build_management_plan(
+                        ticket,
+                        trade_row=trade_row,
+                        assumptions=ticket["assumptions"],
+                    )
                     tickets_data = load_tickets()
                     tickets_data.insert(0, ticket)
                     save_tickets(tickets_data)

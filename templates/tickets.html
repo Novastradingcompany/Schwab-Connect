@@ -35,6 +35,7 @@
             <th>Strategy</th>
             <th>Status</th>
             <th>Top Trade</th>
+            <th>Management Plan</th>
             <th>Legs</th>
             <th>Actions</th>
           </tr>
@@ -58,6 +59,14 @@
                 {% endif %}
               </td>
               <td>
+                {% if ticket.management_plan %}
+                  <div><strong>Target:</strong> {{ ticket.management_plan.profit_target_pct }}% (${{ "%.2f"|format(ticket.management_plan.profit_target_amount) }})</div>
+                  <div><strong>Primary Stop:</strong> {{ ticket.management_plan.debit_stops[0].label }} buyback = ${{ "%.2f"|format(ticket.management_plan.debit_stops[0].buyback_debit_total) }}</div>
+                  <div><strong>Breach:</strong> {{ ticket.management_plan.breach_rule }}</div>
+                  <div><strong>Hard Rule:</strong> {{ ticket.management_plan.hard_rule }}</div>
+                {% endif %}
+              </td>
+              <td>
                 {% for leg in ticket.legs %}
                   {{ leg.action }} {{ leg.strike }} {{ leg.type }}<br>
                 {% endfor %}
@@ -72,7 +81,7 @@
               </td>
             </tr>
           {% else %}
-            <tr><td colspan="8">No tickets yet.</td></tr>
+            <tr><td colspan="9">No tickets yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
