@@ -403,7 +403,7 @@ textarea {
 
 .journal-trades-wrap {
   max-height: 60vh;
-  overflow-y: auto;
+  overflow-y: scroll;
 }
 
 .journal-trades-table thead th {
