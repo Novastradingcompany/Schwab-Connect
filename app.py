@@ -1907,6 +1907,67 @@ def build_management_plan(ticket, trade_row=None, assumptions=None, overrides=No
     }
 
 
+def build_journal_prefill(symbol, strategy, expiry="", trade_row=None, assumptions=None, management_plan=None, source=""):
+    trade = trade_row or {}
+    assumptions = assumptions or {}
+    management_plan = management_plan or {}
+    source_label = (source or "trade ticket").replace("_", " ").strip()
+    top_trade = (
+        trade.get("Trade")
+        or trade.get("Put Spread")
+        or trade.get("Call Spread")
+        or ""
+    )
+    target = _safe_float(trade.get("Target Profit ($)"))
+    if target is None:
+        target = _safe_float(management_plan.get("profit_target_amount"))
+    max_loss = _safe_float(trade.get("Max Loss ($)") or trade.get("Max Loss"))
+    if max_loss is None:
+        max_loss = _safe_float(assumptions.get("max_loss"))
+    thesis_parts = [f"{strategy.replace('_', ' ').title()} setup imported from {source_label}."]
+    if top_trade:
+        thesis_parts.append(top_trade)
+    notes_parts = []
+    if management_plan:
+        notes_parts.append(management_plan.get("summary") or "")
+        if management_plan.get("breach_rule"):
+            notes_parts.append(f"Breach rule: {management_plan['breach_rule']}")
+        if management_plan.get("hard_rule"):
+            notes_parts.append(f"Hard rule: {management_plan['hard_rule']}")
+    if assumptions:
+        dte = assumptions.get("dte")
+        fill_mode = assumptions.get("fill_mode")
+        if dte is not None or fill_mode:
+            notes_parts.append(
+                f"Plan inputs: DTE {dte if dte is not None else '-'} | Fill {fill_mode or '-'}"
+            )
+    params = {
+        "symbol": (symbol or "").upper().strip(),
+        "strategy": strategy or "",
+        "entry_date": dt.date.today().isoformat(),
+        "expiry_date": expiry or "",
+        "max_loss": (round(max_loss, 2) if max_loss is not None else ""),
+        "target": (round(target, 2) if target is not None else ""),
+        "thesis": " ".join([part for part in thesis_parts if part]).strip(),
+        "notes": " ".join([part for part in notes_parts if part]).strip(),
+        "prefill_source": source or "",
+    }
+    return {key: value for key, value in params.items() if value not in {None, ""}}
+
+
+def build_journal_link(symbol, strategy, expiry="", trade_row=None, assumptions=None, management_plan=None, source=""):
+    params = build_journal_prefill(
+        symbol,
+        strategy,
+        expiry=expiry,
+        trade_row=trade_row,
+        assumptions=assumptions,
+        management_plan=management_plan,
+        source=source,
+    )
+    return url_for("trade_journal", **params)
+
+
 def build_ticket(symbol, strategy, expiry, trade_row):
     ticket = {
         "id": dt.datetime.now().strftime("%Y%m%d%H%M%S"),
@@ -3171,6 +3232,7 @@ def tickets():
     error = None
     tickets_data = load_tickets()
     settings = load_settings()
+    tickets_changed = False
     accounts = []
     try:
         client = get_client()
@@ -3217,6 +3279,27 @@ def tickets():
                 save_tickets(tickets_data)
                 break
         return redirect(url_for("tickets"))
+
+    for ticket in tickets_data:
+        if not ticket.get("management_plan"):
+            ticket["management_plan"] = build_management_plan(
+                ticket,
+                trade_row=ticket.get("trade"),
+                assumptions=ticket.get("assumptions"),
+                settings=settings,
+            )
+            tickets_changed = True
+        ticket["journal_url"] = build_journal_link(
+            ticket.get("symbol", ""),
+            ticket.get("strategy", ""),
+            expiry=ticket.get("expiry", ""),
+            trade_row=ticket.get("trade"),
+            assumptions=ticket.get("assumptions"),
+            management_plan=ticket.get("management_plan"),
+            source=ticket.get("source") or "ticket",
+        )
+    if tickets_changed:
+        save_tickets(tickets_data)
 
     return render_template(
         "tickets.html",
@@ -3278,6 +3361,7 @@ def trade_journal():
     message = None
     trades = load_trade_journal()
     edit_trade = None
+    prefill_trade = None
 
     def _coerce_trade_from_form(existing=None):
         symbol = request.form.get("symbol", "").strip().upper()
@@ -3363,13 +3447,40 @@ def trade_journal():
         edit_trade = next((t for t in trades if str(t.get("id")) == edit_id), None)
         if edit_trade is None and not error:
             error = "Trade selected for edit was not found."
+    elif any((request.args.get(key) or "").strip() for key in [
+        "symbol", "strategy", "entry_date", "expiry_date", "max_loss", "target", "thesis", "notes"
+    ]):
+        prefill_trade = {
+            "symbol": (request.args.get("symbol") or "").strip().upper(),
+            "strategy": (request.args.get("strategy") or "").strip(),
+            "status": "open",
+            "entry_date": (request.args.get("entry_date") or "").strip(),
+            "expiry_date": (request.args.get("expiry_date") or "").strip(),
+            "exit_date": "",
+            "max_loss": _safe_float(request.args.get("max_loss")),
+            "target": _safe_float(request.args.get("target")),
+            "realized_pnl": None,
+            "outcome": "",
+            "thesis": (request.args.get("thesis") or "").strip(),
+            "notes": (request.args.get("notes") or "").strip(),
+            "checks": {},
+            "prefill_source": (request.args.get("prefill_source") or "").strip(),
+        }
 
     trades = sorted(
         trades,
         key=lambda t: t.get("created_at") or "",
         reverse=True,
     )
-    return render_template("trade_journal.html", trades=trades, error=error, message=message, edit_trade=edit_trade)
+    return render_template(
+        "trade_journal.html",
+        trades=trades,
+        error=error,
+        message=message,
+        edit_trade=edit_trade,
+        prefill_trade=prefill_trade,
+        form_trade=edit_trade or prefill_trade,
+    )
 
 
 @app.route("/journal/stats")
@@ -3646,7 +3757,7 @@ def spread_sim():
 
     if request.method == "POST":
         action = (request.form.get("action") or "").strip().lower()
-        if action in {"export_watchlist", "export_ticket", "download_simulation", "load_simulation"}:
+        if action in {"export_watchlist", "export_ticket", "download_simulation", "load_simulation", "prefill_journal"}:
             params = {
                 "symbol": symbol,
                 "spread_type": spread_type,
@@ -3830,11 +3941,10 @@ def spread_sim():
                         "Trade": trade_text,
                         "Credit (Realistic)": round(entry_credit * 100.0, 2),
                         "Max Loss": round(max_loss, 2),
+                        "Contracts": contracts,
                         "Source": "Spread Simulator",
                     }
-                    ticket = build_ticket(symbol, spread_type, expiry, trade_row)
-                    ticket["source"] = "spread_simulator"
-                    ticket["assumptions"] = {
+                    assumptions = {
                         "preset": preset,
                         "fill_mode": fill_mode,
                         "slippage": round(slippage, 2),
@@ -3849,11 +3959,31 @@ def spread_sim():
                         "max_profit": round(max_profit, 2),
                         "max_loss": round(max_loss, 2),
                     }
-                    ticket["management_plan"] = build_management_plan(
-                        ticket,
+                    draft_ticket = {
+                        "strategy": spread_type,
+                        "trade": trade_row,
+                        "legs": parse_legs_from_trade(trade_text),
+                        "assumptions": assumptions,
+                    }
+                    management_plan = build_management_plan(
+                        draft_ticket,
                         trade_row=trade_row,
-                        assumptions=ticket["assumptions"],
+                        assumptions=assumptions,
                     )
+                    if action == "prefill_journal":
+                        return redirect(build_journal_link(
+                            symbol,
+                            spread_type,
+                            expiry=expiry,
+                            trade_row=trade_row,
+                            assumptions=assumptions,
+                            management_plan=management_plan,
+                            source="spread_simulator",
+                        ))
+                    ticket = build_ticket(symbol, spread_type, expiry, trade_row)
+                    ticket["source"] = "spread_simulator"
+                    ticket["assumptions"] = assumptions
+                    ticket["management_plan"] = management_plan
                     tickets_data = load_tickets()
                     tickets_data.insert(0, ticket)
                     save_tickets(tickets_data)

@@ -100,6 +100,7 @@
               <td>
                 <form method="post">
                   <input type="hidden" name="ticket_id" value="{{ ticket.id }}">
+                  <a class="button" href="{{ ticket.journal_url }}">Journal</a>
                   <button class="button" type="submit" name="action" value="confirm">Confirm</button>
                   <button class="button" type="submit" name="action" value="send">Send</button>
                   <button class="button" type="submit" name="action" value="clear">Clear</button>

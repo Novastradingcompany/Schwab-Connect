@@ -35,6 +35,9 @@
 
   <form class="card form" method="post">
     <div class="card-title">{% if edit_trade %}Edit Trade{% else %}Log Trade{% endif %}</div>
+    {% if prefill_trade and prefill_trade.prefill_source %}
+      <div class="card-meta">Prefilled from {{ prefill_trade.prefill_source.replace('_', ' ') }}</div>
+    {% endif %}
     <input type="hidden" name="action" value="{% if edit_trade %}update{% else %}add{% endif %}">
     {% if edit_trade %}
       <input type="hidden" name="trade_id" value="{{ edit_trade.id }}">
@@ -42,74 +45,74 @@
     <div class="form-grid">
       <label>
         Symbol
-        <input type="text" name="symbol" placeholder="SPY" value="{{ (edit_trade.symbol if edit_trade else '') }}" required>
+        <input type="text" name="symbol" placeholder="SPY" value="{{ (form_trade.symbol if form_trade else '') }}" required>
       </label>
       <label>
         Strategy
         <select name="strategy" required>
-          <option value="" {% if not edit_trade or not edit_trade.strategy %}selected{% endif %}>Select strategy</option>
-          <option value="bull_put" {% if edit_trade and edit_trade.strategy == "bull_put" %}selected{% endif %}>Bull Put</option>
-          <option value="bear_call" {% if edit_trade and edit_trade.strategy == "bear_call" %}selected{% endif %}>Bear Call</option>
-          <option value="iron_condor" {% if edit_trade and edit_trade.strategy == "iron_condor" %}selected{% endif %}>Iron Condor</option>
-          <option value="covered_call" {% if edit_trade and edit_trade.strategy == "covered_call" %}selected{% endif %}>Covered Call</option>
-          <option value="cash_secured_put" {% if edit_trade and edit_trade.strategy == "cash_secured_put" %}selected{% endif %}>Cash-Secured Put</option>
-          <option value="long_call" {% if edit_trade and edit_trade.strategy == "long_call" %}selected{% endif %}>Long Call</option>
-          <option value="long_put" {% if edit_trade and edit_trade.strategy == "long_put" %}selected{% endif %}>Long Put</option>
+          <option value="" {% if not form_trade or not form_trade.strategy %}selected{% endif %}>Select strategy</option>
+          <option value="bull_put" {% if form_trade and form_trade.strategy == "bull_put" %}selected{% endif %}>Bull Put</option>
+          <option value="bear_call" {% if form_trade and form_trade.strategy == "bear_call" %}selected{% endif %}>Bear Call</option>
+          <option value="iron_condor" {% if form_trade and form_trade.strategy == "iron_condor" %}selected{% endif %}>Iron Condor</option>
+          <option value="covered_call" {% if form_trade and form_trade.strategy == "covered_call" %}selected{% endif %}>Covered Call</option>
+          <option value="cash_secured_put" {% if form_trade and form_trade.strategy == "cash_secured_put" %}selected{% endif %}>Cash-Secured Put</option>
+          <option value="long_call" {% if form_trade and form_trade.strategy == "long_call" %}selected{% endif %}>Long Call</option>
+          <option value="long_put" {% if form_trade and form_trade.strategy == "long_put" %}selected{% endif %}>Long Put</option>
         </select>
       </label>
       <label>
         Status
         <select name="status">
-          <option value="open" {% if not edit_trade or edit_trade.status == "open" %}selected{% endif %}>Open</option>
-          <option value="closed" {% if edit_trade and edit_trade.status == "closed" %}selected{% endif %}>Closed</option>
-          <option value="expired" {% if edit_trade and edit_trade.status == "expired" %}selected{% endif %}>Expired</option>
+          <option value="open" {% if not form_trade or form_trade.status == "open" %}selected{% endif %}>Open</option>
+          <option value="closed" {% if form_trade and form_trade.status == "closed" %}selected{% endif %}>Closed</option>
+          <option value="expired" {% if form_trade and form_trade.status == "expired" %}selected{% endif %}>Expired</option>
         </select>
       </label>
       <label>
         Entry Date
-        <input type="date" name="entry_date" value="{{ (edit_trade.entry_date if edit_trade else '') }}">
+        <input type="date" name="entry_date" value="{{ (form_trade.entry_date if form_trade else '') }}">
       </label>
       <label>
         Expiry Date
-        <input type="date" name="expiry_date" value="{{ (edit_trade.expiry_date if edit_trade else '') }}">
+        <input type="date" name="expiry_date" value="{{ (form_trade.expiry_date if form_trade else '') }}">
       </label>
       <label>
         Exit Date
-        <input type="date" name="exit_date" value="{{ (edit_trade.exit_date if edit_trade else '') }}">
+        <input type="date" name="exit_date" value="{{ (form_trade.exit_date if form_trade else '') }}">
       </label>
       <label>
         Max Loss ($)
-        <input type="number" step="0.01" name="max_loss" value="{{ (edit_trade.max_loss if edit_trade and edit_trade.max_loss is not none else '') }}" required>
+        <input type="number" step="0.01" name="max_loss" value="{{ (form_trade.max_loss if form_trade and form_trade.max_loss is not none else '') }}" required>
       </label>
       <label>
         Target Profit ($)
-        <input type="number" step="0.01" name="target" value="{{ (edit_trade.target if edit_trade and edit_trade.target is not none else '') }}">
+        <input type="number" step="0.01" name="target" value="{{ (form_trade.target if form_trade and form_trade.target is not none else '') }}">
       </label>
       <label>
         Realized P/L ($)
-        <input type="number" step="0.01" name="realized_pnl" value="{{ (edit_trade.realized_pnl if edit_trade and edit_trade.realized_pnl is not none else '') }}">
+        <input type="number" step="0.01" name="realized_pnl" value="{{ (form_trade.realized_pnl if form_trade and form_trade.realized_pnl is not none else '') }}">
       </label>
       <label>
         Outcome
         <select name="outcome">
-          <option value="" {% if not edit_trade or not edit_trade.outcome %}selected{% endif %}>Select outcome</option>
-          <option value="target_hit" {% if edit_trade and edit_trade.outcome == "target_hit" %}selected{% endif %}>Target Hit</option>
-          <option value="expired_worthless" {% if edit_trade and edit_trade.outcome == "expired_worthless" %}selected{% endif %}>Expired Worthless</option>
-          <option value="max_loss_hit" {% if edit_trade and edit_trade.outcome == "max_loss_hit" %}selected{% endif %}>Max Loss Hit</option>
-          <option value="stopped_early" {% if edit_trade and edit_trade.outcome == "stopped_early" %}selected{% endif %}>Stopped Early</option>
-          <option value="rolled" {% if edit_trade and edit_trade.outcome == "rolled" %}selected{% endif %}>Rolled</option>
-          <option value="closed_small_profit" {% if edit_trade and edit_trade.outcome == "closed_small_profit" %}selected{% endif %}>Closed Small Profit</option>
-          <option value="closed_small_loss" {% if edit_trade and edit_trade.outcome == "closed_small_loss" %}selected{% endif %}>Closed Small Loss</option>
-          <option value="breakeven" {% if edit_trade and edit_trade.outcome == "breakeven" %}selected{% endif %}>Breakeven</option>
+          <option value="" {% if not form_trade or not form_trade.outcome %}selected{% endif %}>Select outcome</option>
+          <option value="target_hit" {% if form_trade and form_trade.outcome == "target_hit" %}selected{% endif %}>Target Hit</option>
+          <option value="expired_worthless" {% if form_trade and form_trade.outcome == "expired_worthless" %}selected{% endif %}>Expired Worthless</option>
+          <option value="max_loss_hit" {% if form_trade and form_trade.outcome == "max_loss_hit" %}selected{% endif %}>Max Loss Hit</option>
+          <option value="stopped_early" {% if form_trade and form_trade.outcome == "stopped_early" %}selected{% endif %}>Stopped Early</option>
+          <option value="rolled" {% if form_trade and form_trade.outcome == "rolled" %}selected{% endif %}>Rolled</option>
+          <option value="closed_small_profit" {% if form_trade and form_trade.outcome == "closed_small_profit" %}selected{% endif %}>Closed Small Profit</option>
+          <option value="closed_small_loss" {% if form_trade and form_trade.outcome == "closed_small_loss" %}selected{% endif %}>Closed Small Loss</option>
+          <option value="breakeven" {% if form_trade and form_trade.outcome == "breakeven" %}selected{% endif %}>Breakeven</option>
         </select>
       </label>
       <label>
         Thesis
-        <input type="text" name="thesis" placeholder="Why this trade had edge" value="{{ (edit_trade.thesis if edit_trade else '') }}" required>
+        <input type="text" name="thesis" placeholder="Why this trade had edge" value="{{ (form_trade.thesis if form_trade else '') }}" required>
       </label>
       <label>
         Notes
-        <input type="text" name="notes" placeholder="What to improve next time" value="{{ (edit_trade.notes if edit_trade else '') }}">
+        <input type="text" name="notes" placeholder="What to improve next time" value="{{ (form_trade.notes if form_trade else '') }}">
       </label>
     </div>
 
