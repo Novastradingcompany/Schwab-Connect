@@ -203,8 +203,9 @@
       </div>
 
       <div class="column-toggle-bar" data-column-toggle-target="options-results"></div>
-      <div class="table-wrap" data-refresh="{{ auto_refresh }}" data-column-toggle="1">
-        <table>
+      <div class="table-scroll-top" data-sync-scroll="top"><div class="table-scroll-track"></div></div>
+      <div class="table-wrap options-results-wrap" data-refresh="{{ auto_refresh }}" data-column-toggle="1">
+        <table class="options-results-table">
           <thead>
             <tr>
               {% if strategy != "iron_condor" %}
