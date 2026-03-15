@@ -1832,9 +1832,11 @@ def build_spread_sim_link(symbol, strategy, pricing_mode, row):
     return url_for("spread_sim", **params)
 
 
-def build_management_plan(ticket, trade_row=None, assumptions=None):
+def build_management_plan(ticket, trade_row=None, assumptions=None, overrides=None, settings=None):
     trade = trade_row or (ticket.get("trade") if isinstance(ticket, dict) else {}) or {}
     details = assumptions or (ticket.get("assumptions") if isinstance(ticket, dict) else {}) or {}
+    overrides = overrides or {}
+    settings = settings or load_settings()
     contracts = int(
         _safe_float(trade.get("Contracts"))
         or _safe_float(details.get("contracts"))
@@ -1861,34 +1863,46 @@ def build_management_plan(ticket, trade_row=None, assumptions=None):
     if max_loss is None:
         max_loss = 0.0
 
-    profit_target_pct = 50
+    profit_target_pct = _safe_float(overrides.get("profit_target_pct"))
+    if profit_target_pct is None:
+        profit_target_pct = _safe_float(settings.get("profit_target_pct")) or 50.0
+    profit_target_pct = max(1.0, min(profit_target_pct, 99.0))
     profit_target_amount = round(credit_total * (profit_target_pct / 100.0), 2)
+    primary_stop_multiple = _safe_float(overrides.get("primary_stop_multiple"))
+    if primary_stop_multiple is None:
+        primary_stop_multiple = 2.0
+    primary_stop_multiple = min(max(primary_stop_multiple, 2.0), 3.0)
     debit_stops = []
     for multiple in (2.0, 2.5, 3.0):
         debit_stops.append({
             "label": f"{multiple:.1f}x credit",
             "multiple": multiple,
             "buyback_debit_total": round(credit_total * multiple, 2),
+            "is_primary": abs(multiple - primary_stop_multiple) < 1e-9,
         })
     strategy = str((ticket or {}).get("strategy") or "").lower()
     if strategy == "bull_put":
-        breach_rule = "If spot breaks below the short strike, defend or exit. Do not wait for max loss."
+        breach_rule_default = "If spot breaks below the short strike, defend or exit. Do not wait for max loss."
     elif strategy == "bear_call":
-        breach_rule = "If spot breaks above the short strike, defend or exit. Do not wait for max loss."
+        breach_rule_default = "If spot breaks above the short strike, defend or exit. Do not wait for max loss."
     else:
-        breach_rule = "If the short strike is breached, defend or exit quickly."
+        breach_rule_default = "If the short strike is breached, defend or exit quickly."
+    breach_rule = (overrides.get("breach_rule") or breach_rule_default).strip()
+    hard_rule = (overrides.get("hard_rule") or "Do not hold to full loss. A small win is better than a full loser.").strip()
+    primary_stop = next((stop for stop in debit_stops if stop["is_primary"]), debit_stops[0])
 
     return {
-        "profit_target_pct": profit_target_pct,
+        "profit_target_pct": round(profit_target_pct, 2),
         "profit_target_amount": profit_target_amount,
+        "primary_stop_multiple": primary_stop_multiple,
         "debit_stops": debit_stops,
         "breach_rule": breach_rule,
         "hard_max_loss": round(max_loss, 2),
-        "hard_rule": "Do not hold to full loss. A small win is better than a full loser.",
+        "hard_rule": hard_rule,
         "summary": (
             f"Take profit near ${profit_target_amount:,.2f}. "
             f"Exit or defend on short-strike breach. "
-            f"Primary debit stop at ${debit_stops[0]['buyback_debit_total']:,.2f}."
+            f"Primary debit stop at ${primary_stop['buyback_debit_total']:,.2f}."
         ),
     }
 
@@ -3156,6 +3170,7 @@ def movers_agent():
 def tickets():
     error = None
     tickets_data = load_tickets()
+    settings = load_settings()
     accounts = []
     try:
         client = get_client()
@@ -3184,6 +3199,21 @@ def tickets():
                 elif action == "send":
                     ticket["status"] = "send_requested"
                     ticket["send_requested_at"] = dt.datetime.now().isoformat(timespec="seconds")
+                elif action == "update_plan":
+                    overrides = {
+                        "profit_target_pct": _safe_float(request.form.get("profit_target_pct")),
+                        "primary_stop_multiple": _safe_float(request.form.get("primary_stop_multiple")),
+                        "breach_rule": (request.form.get("breach_rule") or "").strip(),
+                        "hard_rule": (request.form.get("hard_rule") or "").strip(),
+                    }
+                    overrides = {key: value for key, value in overrides.items() if value not in {None, ""}}
+                    ticket["management_plan"] = build_management_plan(
+                        ticket,
+                        trade_row=ticket.get("trade"),
+                        assumptions=ticket.get("assumptions"),
+                        overrides=overrides,
+                        settings=settings,
+                    )
                 save_tickets(tickets_data)
                 break
         return redirect(url_for("tickets"))

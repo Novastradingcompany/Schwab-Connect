@@ -414,6 +414,21 @@ textarea {
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
 }
 
+.ticket-plan-form {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.ticket-plan-form label {
+  font-size: 12px;
+}
+
+.ticket-plan-form input,
+.ticket-plan-form select {
+  width: 100%;
+}
+
 .nova-response {
   white-space: pre-wrap;
   line-height: 1.5;

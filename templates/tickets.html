@@ -61,9 +61,35 @@
               <td>
                 {% if ticket.management_plan %}
                   <div><strong>Target:</strong> {{ ticket.management_plan.profit_target_pct }}% (${{ "%.2f"|format(ticket.management_plan.profit_target_amount) }})</div>
-                  <div><strong>Primary Stop:</strong> {{ ticket.management_plan.debit_stops[0].label }} buyback = ${{ "%.2f"|format(ticket.management_plan.debit_stops[0].buyback_debit_total) }}</div>
+                  {% set primary_stop = (ticket.management_plan.debit_stops | selectattr('is_primary') | list | first) or ticket.management_plan.debit_stops[0] %}
+                  <div><strong>Primary Stop:</strong> {{ primary_stop.label }} buyback = ${{ "%.2f"|format(primary_stop.buyback_debit_total) }}</div>
                   <div><strong>Breach:</strong> {{ ticket.management_plan.breach_rule }}</div>
                   <div><strong>Hard Rule:</strong> {{ ticket.management_plan.hard_rule }}</div>
+                  <form method="post" class="ticket-plan-form">
+                    <input type="hidden" name="ticket_id" value="{{ ticket.id }}">
+                    <input type="hidden" name="action" value="update_plan">
+                    <label>
+                      Target %
+                      <input type="number" step="1" min="1" max="99" name="profit_target_pct" value="{{ ticket.management_plan.profit_target_pct }}">
+                    </label>
+                    <label>
+                      Primary Stop
+                      <select name="primary_stop_multiple">
+                        {% for multiple in [2.0, 2.5, 3.0] %}
+                          <option value="{{ multiple }}" {% if ticket.management_plan.primary_stop_multiple == multiple %}selected{% endif %}>{{ "%.1f"|format(multiple) }}x credit</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                    <label>
+                      Breach Rule
+                      <input type="text" name="breach_rule" value="{{ ticket.management_plan.breach_rule }}">
+                    </label>
+                    <label>
+                      Hard Rule
+                      <input type="text" name="hard_rule" value="{{ ticket.management_plan.hard_rule }}">
+                    </label>
+                    <button class="button" type="submit">Save Plan</button>
+                  </form>
                 {% endif %}
               </td>
               <td>
