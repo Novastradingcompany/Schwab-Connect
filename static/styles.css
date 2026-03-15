@@ -375,6 +375,19 @@ textarea {
   height: 1px;
 }
 
+.spread-ladder-wrap {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.spread-ladder-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f7f1ea;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+}
+
 .nova-response {
   white-space: pre-wrap;
   line-height: 1.5;
