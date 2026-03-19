@@ -736,6 +736,22 @@ th.sortable[data-sort-dir="desc"]::after {
   stroke-dasharray: 8 6;
 }
 
+.spread-chart-line-spot {
+  stroke: #2563eb;
+}
+
+.spread-chart-line-profit {
+  stroke: #0f7a2f;
+}
+
+.spread-chart-line-neutral {
+  stroke: #b7791f;
+}
+
+.spread-chart-line-loss {
+  stroke: #b42318;
+}
+
 .spread-chart-level-label {
   font-size: 12px;
   font-weight: 700;
