@@ -11,6 +11,14 @@
   {% if error %}
     <div class="card alert">{{ error }}</div>
   {% endif %}
+  {% if chart_warning %}
+    <div class="card alert">
+      {{ chart_warning }}
+      {% if latest_chart_close is not none and chart_gap_pct is not none %}
+        Latest chart close: ${{ "{:,.2f}".format(latest_chart_close) }} | Gap: {{ "{:.2f}".format(chart_gap_pct) }}%
+      {% endif %}
+    </div>
+  {% endif %}
 
   <form class="card form no-print" method="get">
     {% for key, value in chart_query.items() %}

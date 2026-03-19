@@ -1,6 +1,6 @@
 # Nova Schwab Manual
 
-Last updated: 2026-03-13
+Last updated: 2026-03-18
 
 ## 1) What This App Does
 
@@ -9,6 +9,7 @@ Nova Schwab is a web dashboard for:
 - Scanning options strategies from Schwab chains
 - Reviewing open put spreads with live scenario columns
 - Planning trades in the credit spread simulator
+- Reviewing spread setups on the chart page with spot and level guides
 - Managing a watchlist, movers workflow, and draft tickets
 - Monitoring alerts with rule-based exit checks
 - Logging trades in a journal and reviewing closed-trade stats
@@ -314,9 +315,12 @@ Presets apply default scenario values and can also reset the simulation bounds. 
 ### Main actions
 
 - `Run Simulation`
+- `Open Chart`
 - `Export Setup to Watchlist`
 - `Export Setup to Ticket`
+- `Prefill Journal Entry`
 - `Save Simulation File`
+- `Clear`
 - `Print`
 - `Load Simulation File`
 
@@ -341,6 +345,28 @@ Presets apply default scenario values and can also reset the simulation bounds. 
 - `Stop And Defense Lines`
 - `Vertical Scenario Ladder`
 
+### Chart handoff
+
+Use `Open Chart` to send the current spread setup into the chart page.
+
+The chart page carries over:
+- symbol
+- spread type
+- current spot
+- short strike
+- long strike
+- credit and fill assumptions
+- contracts and DTE
+
+The chart page shows:
+- underlying price history
+- horizontal guide lines for `Spot`, `Profit Limit`, `Breakeven`, and `Loss Limit`
+- print support
+- `Back To Spread Sim`
+- `Clear`
+
+If the latest chart close is materially different from the simulator spot, the page shows a warning with both values and the percent gap. Treat that as a data sanity check before relying on the chart for decision support.
+
 ### Save/load notes
 
 - Saved files are JSON
@@ -350,6 +376,7 @@ Presets apply default scenario values and can also reset the simulation bounds. 
 ### Handoff notes
 
 - `Options Chain` can open a selected spread directly in this page
+- `Open Chart` sends the active setup into the chart page
 - `Export Setup to Ticket` creates a draft ticket
 - `Export Setup to Watchlist` pushes the setup into watchlist storage
 
@@ -626,6 +653,7 @@ Fix:
 - Watchlist: `templates/watchlist.html`
 - Movers page: `templates/movers_agent.html`
 - Spread simulator: `templates/spread_sim.html`
+- Spread chart page: `templates/chart.html`
 - Risk dashboard: `templates/risk.html`
 - Summary page: `templates/summary.html`
 - Journal page: `templates/trade_journal.html`

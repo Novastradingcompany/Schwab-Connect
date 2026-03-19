@@ -4242,12 +4242,25 @@ def spread_chart():
         period = "6m"
 
     chart_points = []
+    chart_warning = None
+    latest_chart_close = None
+    chart_gap_pct = None
     if not error:
         try:
             history = fetch_price_history(symbol, days=period_options[period]["days"])
             chart_points = _extract_chart_points(history)
             if not chart_points:
                 error = f"No chart history returned for {symbol}."
+            else:
+                latest_chart_close = _safe_float(chart_points[-1].get("close"))
+                if latest_chart_close and stock_price > 0:
+                    chart_gap_pct = abs(latest_chart_close - stock_price) / stock_price * 100.0
+                    if chart_gap_pct >= 3.0:
+                        chart_warning = (
+                            f"Chart latest close (${latest_chart_close:,.2f}) is "
+                            f"{chart_gap_pct:.2f}% away from the simulator spot "
+                            f"(${stock_price:,.2f}). Check symbol, timeframe, or chart data."
+                        )
         except Exception as exc:
             error = str(exc)
 
@@ -4313,6 +4326,9 @@ def spread_chart():
         period=period,
         period_options=period_options,
         chart_points=chart_points,
+        chart_warning=chart_warning,
+        latest_chart_close=(round(latest_chart_close, 2) if latest_chart_close is not None else None),
+        chart_gap_pct=(round(chart_gap_pct, 2) if chart_gap_pct is not None else None),
         level_lines=level_lines,
         chart_query=chart_query,
         spread_sim_url=url_for("spread_sim", **chart_query),
