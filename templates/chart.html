@@ -117,15 +117,18 @@
 
   <script>
     (function () {
+      const storageKey = "nova.spreadChart.preferences";
       const root = document.getElementById("spread-chart");
       const svg = document.getElementById("spread-chart-svg");
       const tooltip = document.getElementById("spread-chart-tooltip");
       const legend = document.getElementById("spread-chart-legend");
+      const toolbarForm = document.querySelector("form.card.form.no-print");
+      const periodButtons = Array.from(document.querySelectorAll(".chart-periods button[name='period']"));
       const toggleLiveQuote = document.getElementById("toggle-live-quote");
       const toggleSpot = document.getElementById("toggle-spot");
       const toggleTargets = document.getElementById("toggle-targets");
       const toggleBreakeven = document.getElementById("toggle-breakeven");
-      if (!root || !svg || !tooltip || !legend || !toggleLiveQuote || !toggleSpot || !toggleTargets || !toggleBreakeven) return;
+      if (!root || !svg || !tooltip || !legend || !toolbarForm || !toggleLiveQuote || !toggleSpot || !toggleTargets || !toggleBreakeven) return;
 
       const points = JSON.parse(root.dataset.points || "[]");
       const lines = JSON.parse(root.dataset.lines || "[]");
@@ -140,6 +143,45 @@
           node.setAttribute(key, attrs[key]);
         });
         return node;
+      }
+
+      function loadPreferences() {
+        try {
+          return JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+        } catch (error) {
+          return {};
+        }
+      }
+
+      function savePreferences(nextPreferences) {
+        try {
+          window.localStorage.setItem(storageKey, JSON.stringify(nextPreferences));
+        } catch (error) {
+          return;
+        }
+      }
+
+      const preferences = loadPreferences();
+      const url = new URL(window.location.href);
+      const explicitPeriod = url.searchParams.has("period");
+
+      if (typeof preferences.show_live_quote === "boolean") {
+        toggleLiveQuote.checked = preferences.show_live_quote;
+      }
+      if (typeof preferences.show_spot === "boolean") {
+        toggleSpot.checked = preferences.show_spot;
+      }
+      if (typeof preferences.show_targets === "boolean") {
+        toggleTargets.checked = preferences.show_targets;
+      }
+      if (typeof preferences.show_breakeven === "boolean") {
+        toggleBreakeven.checked = preferences.show_breakeven;
+      }
+
+      if (!explicitPeriod && preferences.period && periodButtons.some(function (button) { return button.value === preferences.period; })) {
+        url.searchParams.set("period", preferences.period);
+        window.location.replace(url.toString());
+        return;
       }
 
       function getVisibleLines() {
@@ -401,6 +443,26 @@
       draw();
       [toggleLiveQuote, toggleSpot, toggleTargets, toggleBreakeven].forEach(function (toggle) {
         toggle.addEventListener("change", draw);
+        toggle.addEventListener("change", function () {
+          savePreferences({
+            period: url.searchParams.get("period") || preferences.period || "{{ period }}",
+            show_live_quote: toggleLiveQuote.checked,
+            show_spot: toggleSpot.checked,
+            show_targets: toggleTargets.checked,
+            show_breakeven: toggleBreakeven.checked,
+          });
+        });
+      });
+      periodButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          savePreferences({
+            period: button.value,
+            show_live_quote: toggleLiveQuote.checked,
+            show_spot: toggleSpot.checked,
+            show_targets: toggleTargets.checked,
+            show_breakeven: toggleBreakeven.checked,
+          });
+        });
       });
       window.addEventListener("resize", draw);
     })();
