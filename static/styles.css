@@ -707,6 +707,29 @@ th.sortable[data-sort-dir="desc"]::after {
   margin-top: 14px;
 }
 
+.chart-visibility-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.chart-toggle {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: var(--ink);
+}
+
+.chart-toggle input {
+  margin: 0;
+}
+
 .spread-chart-svg {
   display: block;
   width: 100%;
