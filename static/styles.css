@@ -765,6 +765,9 @@ th.sortable[data-sort-dir="desc"]::after {
 
 .spread-chart-leader {
   stroke-width: 1.5;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .spread-chart-focus {

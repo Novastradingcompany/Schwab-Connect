@@ -99,7 +99,7 @@
       if (!points.length) return;
 
       const NS = "http://www.w3.org/2000/svg";
-      const margin = { top: 24, right: 190, bottom: 42, left: 64 };
+      const margin = { top: 24, right: 220, bottom: 42, left: 64 };
 
       function createNode(name, attrs) {
         const node = document.createElementNS(NS, name);
@@ -224,26 +224,28 @@
 
         labelEntries.forEach(function (entry) {
           const leaderStartX = margin.left + plotWidth;
-          const leaderMidX = leaderStartX + 10;
-          const labelX = leaderStartX + 18;
-
-          svg.appendChild(createNode("line", {
-            x1: leaderStartX,
-            y1: entry.y,
-            x2: leaderMidX,
-            y2: entry.labelY,
-            class: "spread-chart-leader tone-" + entry.line.tone
-          }));
+          const labelRightX = width - 18;
+          const labelX = labelRightX - 10;
 
           const text = createNode("text", {
             x: labelX,
             y: entry.labelY + 4,
+            "text-anchor": "end",
             class: "spread-chart-level-label tone-" + entry.line.tone
           });
           text.textContent = entry.line.label + " $" + Number(entry.line.price).toFixed(2);
           svg.appendChild(text);
 
           const bbox = text.getBBox();
+          const leaderEndX = Math.max(leaderStartX + 12, bbox.x - 10);
+          const leader = createNode("path", {
+            d: "M" + leaderStartX + "," + entry.y +
+              " L" + (leaderEndX - 14) + "," + entry.y +
+              " L" + leaderEndX + "," + entry.labelY,
+            class: "spread-chart-leader tone-" + entry.line.tone
+          });
+          svg.insertBefore(leader, text);
+
           const box = createNode("rect", {
             x: bbox.x - 6,
             y: bbox.y - 3,
