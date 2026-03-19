@@ -442,8 +442,13 @@ def fetch_price_history(symbol, days=365):
     response = schwab_request(
         lambda: client.get_price_history(
             symbol,
+            period_type=client.PriceHistory.PeriodType.YEAR,
+            frequency_type=client.PriceHistory.FrequencyType.DAILY,
+            frequency=1,
             start_datetime=start_date,
             end_datetime=end_date,
+            need_extended_hours_data=False,
+            need_previous_close=True,
         ),
         f"get_price_history:{symbol}",
     )
