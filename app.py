@@ -4232,11 +4232,16 @@ def spread_chart():
     max_profit = entry_credit * 100 * contracts
     max_loss = max(width - entry_credit, 0.0) * 100 * contracts
 
+    today_date = dt.date.today()
+    ytd_days = max((today_date - dt.date(today_date.year, 1, 1)).days + 5, 10)
     period_options = {
+        "1w": {"label": "1W", "days": 10},
         "1m": {"label": "1M", "days": 35},
         "3m": {"label": "3M", "days": 100},
         "6m": {"label": "6M", "days": 190},
+        "ytd": {"label": "YTD", "days": ytd_days},
         "1y": {"label": "1Y", "days": 370},
+        "max": {"label": "Max", "days": 1825},
     }
     if period not in period_options:
         period = "6m"
