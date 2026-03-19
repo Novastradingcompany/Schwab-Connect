@@ -356,6 +356,20 @@ textarea {
   background: var(--accent-dark);
 }
 
+.button-link {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.button-muted {
+  background: rgba(14, 19, 26, 0.65);
+  box-shadow: none;
+}
+
+.button-muted:hover {
+  background: rgba(14, 19, 26, 0.82);
+}
+
 .alert {
   border: 1px solid rgba(197, 93, 61, 0.4);
   color: #6f2411;
@@ -637,6 +651,14 @@ th.sortable[data-sort-dir="desc"]::after {
     font-size: 12px;
     padding: 6px 8px;
   }
+
+  .spread-chart-shell {
+    break-inside: avoid;
+  }
+
+  .spread-chart-tooltip {
+    display: none !important;
+  }
 }
 
 .pl-pos {
@@ -663,4 +685,104 @@ th.sortable[data-sort-dir="desc"]::after {
 
 .row-pl-flat {
   background: transparent;
+}
+
+.chart-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.chart-periods,
+.chart-toolbar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.spread-chart-shell {
+  position: relative;
+  margin-top: 14px;
+}
+
+.spread-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.spread-chart-tooltip {
+  position: absolute;
+  min-width: 110px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(14, 19, 26, 0.92);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+
+.spread-chart-axis {
+  fill: rgba(14, 19, 26, 0.58);
+  font-size: 12px;
+}
+
+.spread-chart-line {
+  stroke-width: 2;
+  stroke-dasharray: 8 6;
+}
+
+.spread-chart-level-label {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.spread-chart-focus {
+  stroke: rgba(14, 19, 26, 0.35);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.spread-chart-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.spread-chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.spread-chart-legend-swatch {
+  width: 18px;
+  height: 0;
+  border-top: 3px dashed currentColor;
+}
+
+.tone-spot {
+  color: #2563eb;
+}
+
+.tone-profit {
+  color: #0f7a2f;
+}
+
+.tone-neutral {
+  color: #8c3d1f;
+}
+
+.tone-loss {
+  color: #b42318;
 }

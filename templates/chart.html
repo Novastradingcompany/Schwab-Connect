@@ -1,0 +1,289 @@
+{% extends "layout.html" %}
+{% block content %}
+  <section class="hero">
+    <div>
+      <h1>Spread Chart</h1>
+      <p class="subtitle">Underlying price history with the active Spread Sim profit and loss boundaries.</p>
+    </div>
+    <div class="pill">{{ symbol }} | {{ today }} | {{ period_options[period].label }}</div>
+  </section>
+
+  {% if error %}
+    <div class="card alert">{{ error }}</div>
+  {% endif %}
+
+  <form class="card form no-print" method="get">
+    {% for key, value in chart_query.items() %}
+      <input type="hidden" name="{{ key }}" value="{{ value }}">
+    {% endfor %}
+    <div class="chart-toolbar">
+      <div class="chart-periods">
+        {% for key, meta in period_options.items() %}
+          <button class="button{% if period == key %} button-muted{% endif %}" type="submit" name="period" value="{{ key }}">{{ meta.label }}</button>
+        {% endfor %}
+      </div>
+      <div class="chart-toolbar-actions">
+        <a class="button button-link" href="{{ spread_sim_url }}">Back To Spread Sim</a>
+        <button class="button" type="button" onclick="window.print()">Print</button>
+        <a class="button button-link" href="{{ url_for('spread_chart') }}">Clear</a>
+      </div>
+    </div>
+  </form>
+
+  <section class="card">
+    <div class="pl-summary-grid">
+      <div class="pl-summary-card">
+        <div class="metric-label">Current Spot</div>
+        <div class="metric-value">${{ "{:,.2f}".format(stock_price) }}</div>
+      </div>
+      <div class="pl-summary-card">
+        <div class="metric-label">Breakeven</div>
+        <div class="metric-value">${{ "{:,.2f}".format(breakeven) }}</div>
+      </div>
+      <div class="pl-summary-card">
+        <div class="metric-label">Max Profit</div>
+        <div class="metric-value pl-pos">${{ "{:,.2f}".format(max_profit) }}</div>
+      </div>
+      <div class="pl-summary-card">
+        <div class="metric-label">Max Loss</div>
+        <div class="metric-value pl-neg">${{ "{:,.2f}".format(-max_loss) }}</div>
+      </div>
+      <div class="pl-summary-card">
+        <div class="metric-label">Setup</div>
+        <div class="metric-value">{{ "Bull Put" if spread_type == "bull_put" else "Bear Call" }}</div>
+        <div class="pl-summary-note">{{ short_strike }} / {{ long_strike }} | {{ contracts }} contract{{ "" if contracts == 1 else "s" }} | {{ dte }} DTE</div>
+      </div>
+      <div class="pl-summary-card">
+        <div class="metric-label">Current Zone</div>
+        <div class="metric-value">{{ current_zone }}</div>
+        <div class="pl-summary-note">Entry credit used: ${{ "{:,.2f}".format(entry_credit) }}</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Price Chart</div>
+    <div class="card-meta">Hover the chart to inspect price history. Horizontal guides show spot, short strike, breakeven, and long strike.</div>
+    <div id="spread-chart" class="spread-chart-shell" data-points='{{ chart_points|tojson }}' data-lines='{{ level_lines|tojson }}'>
+      <svg id="spread-chart-svg" class="spread-chart-svg" viewBox="0 0 960 480" role="img" aria-label="Spread price chart"></svg>
+      <div id="spread-chart-tooltip" class="spread-chart-tooltip" hidden></div>
+    </div>
+    <div class="spread-chart-legend">
+      {% for line in level_lines %}
+        <div class="spread-chart-legend-item tone-{{ line.tone }}">
+          <span class="spread-chart-legend-swatch"></span>
+          <strong>{{ line.label }}</strong> at ${{ "{:,.2f}".format(line.price) }}
+          <span class="pl-summary-note">{{ line.note }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <script>
+    (function () {
+      const root = document.getElementById("spread-chart");
+      const svg = document.getElementById("spread-chart-svg");
+      const tooltip = document.getElementById("spread-chart-tooltip");
+      if (!root || !svg || !tooltip) return;
+
+      const points = JSON.parse(root.dataset.points || "[]");
+      const lines = JSON.parse(root.dataset.lines || "[]");
+      if (!points.length) return;
+
+      const NS = "http://www.w3.org/2000/svg";
+      const margin = { top: 24, right: 120, bottom: 42, left: 64 };
+
+      function createNode(name, attrs) {
+        const node = document.createElementNS(NS, name);
+        Object.keys(attrs || {}).forEach(function (key) {
+          node.setAttribute(key, attrs[key]);
+        });
+        return node;
+      }
+
+      function draw() {
+        const width = Math.max(root.clientWidth, 320);
+        const height = Math.max(Math.round(width * 0.5), 360);
+        const plotWidth = width - margin.left - margin.right;
+        const plotHeight = height - margin.top - margin.bottom;
+        svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+        svg.innerHTML = "";
+
+        const prices = points.map(function (point) { return point.close; });
+        const lows = points.map(function (point) { return point.low; });
+        const highs = points.map(function (point) { return point.high; });
+        const linePrices = lines.map(function (line) { return line.price; });
+        const minPrice = Math.min.apply(null, lows.concat(linePrices));
+        const maxPrice = Math.max.apply(null, highs.concat(linePrices));
+        const padding = Math.max((maxPrice - minPrice) * 0.1, 1);
+        const yMin = minPrice - padding;
+        const yMax = maxPrice + padding;
+
+        function xScale(index) {
+          if (points.length === 1) return margin.left + (plotWidth / 2);
+          return margin.left + (index / (points.length - 1)) * plotWidth;
+        }
+
+        function yScale(price) {
+          return margin.top + ((yMax - price) / (yMax - yMin)) * plotHeight;
+        }
+
+        const background = createNode("rect", {
+          x: margin.left,
+          y: margin.top,
+          width: plotWidth,
+          height: plotHeight,
+          rx: 18,
+          fill: "rgba(255,255,255,0.5)"
+        });
+        svg.appendChild(background);
+
+        for (let i = 0; i <= 4; i += 1) {
+          const price = yMin + ((yMax - yMin) * i / 4);
+          const y = yScale(price);
+          svg.appendChild(createNode("line", {
+            x1: margin.left,
+            y1: y,
+            x2: margin.left + plotWidth,
+            y2: y,
+            stroke: "rgba(14, 19, 26, 0.12)",
+            "stroke-width": "1"
+          }));
+          const label = createNode("text", {
+            x: margin.left - 10,
+            y: y + 4,
+            "text-anchor": "end",
+            class: "spread-chart-axis"
+          });
+          label.textContent = "$" + price.toFixed(2);
+          svg.appendChild(label);
+        }
+
+        const xTicks = [0, Math.floor((points.length - 1) / 2), points.length - 1]
+          .filter(function (value, index, arr) { return arr.indexOf(value) === index; });
+        xTicks.forEach(function (index) {
+          const point = points[index];
+          const x = xScale(index);
+          const label = createNode("text", {
+            x: x,
+            y: height - 12,
+            "text-anchor": "middle",
+            class: "spread-chart-axis"
+          });
+          label.textContent = point.label;
+          svg.appendChild(label);
+        });
+
+        lines.forEach(function (line) {
+          const y = yScale(line.price);
+          svg.appendChild(createNode("line", {
+            x1: margin.left,
+            y1: y,
+            x2: margin.left + plotWidth,
+            y2: y,
+            class: "spread-chart-line tone-" + line.tone
+          }));
+          const label = createNode("text", {
+            x: margin.left + plotWidth + 10,
+            y: y + 4,
+            class: "spread-chart-level-label tone-" + line.tone
+          });
+          label.textContent = line.label + " $" + Number(line.price).toFixed(2);
+          svg.appendChild(label);
+        });
+
+        const areaPath = points.map(function (point, index) {
+          return (index === 0 ? "M" : "L") + xScale(index) + "," + yScale(point.close);
+        }).join(" ");
+        const area = createNode("path", {
+          d: areaPath + " L" + xScale(points.length - 1) + "," + (margin.top + plotHeight) +
+            " L" + xScale(0) + "," + (margin.top + plotHeight) + " Z",
+          fill: "rgba(197, 93, 61, 0.12)"
+        });
+        svg.appendChild(area);
+
+        svg.appendChild(createNode("path", {
+          d: areaPath,
+          fill: "none",
+          stroke: "#c55d3d",
+          "stroke-width": "3",
+          "stroke-linejoin": "round",
+          "stroke-linecap": "round"
+        }));
+
+        const focusX = createNode("line", {
+          y1: margin.top,
+          y2: margin.top + plotHeight,
+          class: "spread-chart-focus",
+          hidden: "hidden"
+        });
+        const focusY = createNode("line", {
+          x1: margin.left,
+          x2: margin.left + plotWidth,
+          class: "spread-chart-focus",
+          hidden: "hidden"
+        });
+        const focusDot = createNode("circle", {
+          r: "5",
+          fill: "#c55d3d",
+          stroke: "#fff",
+          "stroke-width": "2",
+          hidden: "hidden"
+        });
+        svg.appendChild(focusX);
+        svg.appendChild(focusY);
+        svg.appendChild(focusDot);
+
+        const hitbox = createNode("rect", {
+          x: margin.left,
+          y: margin.top,
+          width: plotWidth,
+          height: plotHeight,
+          fill: "transparent"
+        });
+        svg.appendChild(hitbox);
+
+        function showPoint(index, event) {
+          const point = points[index];
+          const x = xScale(index);
+          const y = yScale(point.close);
+          focusX.setAttribute("x1", x);
+          focusX.setAttribute("x2", x);
+          focusY.setAttribute("y1", y);
+          focusY.setAttribute("y2", y);
+          focusDot.setAttribute("cx", x);
+          focusDot.setAttribute("cy", y);
+          focusX.removeAttribute("hidden");
+          focusY.removeAttribute("hidden");
+          focusDot.removeAttribute("hidden");
+          tooltip.hidden = false;
+          tooltip.innerHTML = "<strong>" + point.label + "</strong><br>$" + point.close.toFixed(2);
+          const bounds = root.getBoundingClientRect();
+          const tooltipX = Math.min(Math.max(event.clientX - bounds.left + 14, 12), bounds.width - 140);
+          const tooltipY = Math.max(event.clientY - bounds.top - 54, 12);
+          tooltip.style.left = tooltipX + "px";
+          tooltip.style.top = tooltipY + "px";
+        }
+
+        hitbox.addEventListener("mousemove", function (event) {
+          const bounds = svg.getBoundingClientRect();
+          const localX = event.clientX - bounds.left;
+          const ratio = (localX - margin.left) / plotWidth;
+          const clamped = Math.max(0, Math.min(1, ratio));
+          const index = Math.round(clamped * (points.length - 1));
+          showPoint(index, event);
+        });
+
+        hitbox.addEventListener("mouseleave", function () {
+          focusX.setAttribute("hidden", "hidden");
+          focusY.setAttribute("hidden", "hidden");
+          focusDot.setAttribute("hidden", "hidden");
+          tooltip.hidden = true;
+        });
+      }
+
+      draw();
+      window.addEventListener("resize", draw);
+    })();
+  </script>
+{% endblock %}

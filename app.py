@@ -468,6 +468,31 @@ def _extract_closes(history):
     return closes
 
 
+def _extract_chart_points(history):
+    candles = history.get("candles", []) if isinstance(history, dict) else []
+    points = []
+    for candle in candles:
+        close_val = _safe_float(candle.get("close"))
+        if close_val is None or close_val <= 0:
+            continue
+        high_val = _safe_float(candle.get("high"))
+        low_val = _safe_float(candle.get("low"))
+        ts_raw = candle.get("datetime")
+        try:
+            ts = dt.datetime.fromtimestamp(float(ts_raw) / 1000.0, tz=dt.timezone.utc)
+        except (TypeError, ValueError, OSError, OverflowError):
+            continue
+        points.append({
+            "date": ts.date().isoformat(),
+            "label": ts.strftime("%Y-%m-%d"),
+            "close": round(close_val, 2),
+            "high": round(high_val if high_val is not None and high_val > 0 else close_val, 2),
+            "low": round(low_val if low_val is not None and low_val > 0 else close_val, 2),
+        })
+    points.sort(key=lambda item: item["date"])
+    return points
+
+
 def compute_trend_metrics(closes):
     if not closes or len(closes) < 2:
         return {}
@@ -4119,6 +4144,183 @@ def spread_sim():
         strike_buffer_pct=(round(strike_buffer_pct, 2) if strike_buffer_pct is not None else None),
         risk_warning=risk_warning,
         rows=rows,
+    )
+
+
+@app.route("/chart")
+def spread_chart():
+    error = None
+    symbol = (request.args.get("symbol") or "SNDK").strip().upper() or "SNDK"
+    spread_type = (request.args.get("spread_type") or "bull_put").strip().lower()
+    if spread_type not in {"bull_put", "bear_call"}:
+        spread_type = "bull_put"
+    preset = (request.args.get("preset") or "custom").strip().lower()
+    if preset not in SPREAD_SIM_PRESETS:
+        preset = "custom"
+    fill_mode = (request.args.get("fill_mode") or "mid").strip().lower()
+    if fill_mode not in {"mid", "natural"}:
+        fill_mode = "mid"
+
+    stock_price = _safe_float(request.args.get("stock_price"))
+    short_strike = _safe_float(request.args.get("short_strike"))
+    long_strike = _safe_float(request.args.get("long_strike"))
+    credit = _safe_float(request.args.get("credit"))
+    slippage = _safe_float(request.args.get("slippage"))
+    contracts = int(_safe_float(request.args.get("contracts")) or 1)
+    dte = int(_safe_float(request.args.get("dte")) or 7)
+    iv_short = _safe_float(request.args.get("iv_short"))
+    iv_long = _safe_float(request.args.get("iv_long"))
+    rate = _safe_float(request.args.get("rate"))
+    period = (request.args.get("period") or "6m").strip().lower()
+
+    short_default = 582.5 if spread_type == "bull_put" else 602.5
+    long_default = 580.0 if spread_type == "bull_put" else 605.0
+    short_strike = short_strike if short_strike is not None else short_default
+    long_strike = long_strike if long_strike is not None else long_default
+    stock_price = stock_price if stock_price is not None else round((short_strike + long_strike) / 2.0, 2)
+    credit = credit if credit is not None else 0.95
+    iv_short = iv_short if iv_short is not None else 0.25
+    iv_long = iv_long if iv_long is not None else 0.25
+    rate = rate if rate is not None else (_safe_float(os.getenv("RISK_FREE_RATE")) or 0.045)
+    slippage = slippage if slippage is not None and slippage >= 0 else 0.05
+    contracts = max(1, contracts)
+    dte = max(0, dte)
+    t_years = dte / 365.0
+
+    if spread_type == "bull_put":
+        width = short_strike - long_strike
+        if width <= 0:
+            error = "For Bull Put, long strike must be below short strike."
+    else:
+        width = long_strike - short_strike
+        if width <= 0:
+            error = "For Bear Call, long strike must be above short strike."
+    width = abs(width)
+
+    if spread_type == "bull_put":
+        est_short = _bs_put_price(stock_price, short_strike, t_years, rate, iv_short)
+        est_long = _bs_put_price(stock_price, long_strike, t_years, rate, iv_long)
+    else:
+        est_short = _bs_call_price(stock_price, short_strike, t_years, rate, iv_short)
+        est_long = _bs_call_price(stock_price, long_strike, t_years, rate, iv_long)
+    estimated_credit = max(est_short - est_long, 0.0)
+    quoted_credit = credit if credit is not None else round(estimated_credit, 4)
+    entry_credit = quoted_credit if fill_mode == "mid" else max(quoted_credit - slippage, 0.0)
+
+    if spread_type == "bull_put":
+        breakeven = short_strike - entry_credit
+        current_zone = (
+            "Max Profit Zone" if stock_price >= short_strike
+            else "Max Loss Zone" if stock_price <= long_strike
+            else "Profit Zone" if stock_price >= breakeven
+            else "Loss Zone"
+        )
+    else:
+        breakeven = short_strike + entry_credit
+        current_zone = (
+            "Max Profit Zone" if stock_price <= short_strike
+            else "Max Loss Zone" if stock_price >= long_strike
+            else "Profit Zone" if stock_price <= breakeven
+            else "Loss Zone"
+        )
+
+    max_profit = entry_credit * 100 * contracts
+    max_loss = max(width - entry_credit, 0.0) * 100 * contracts
+
+    period_options = {
+        "1m": {"label": "1M", "days": 35},
+        "3m": {"label": "3M", "days": 100},
+        "6m": {"label": "6M", "days": 190},
+        "1y": {"label": "1Y", "days": 370},
+    }
+    if period not in period_options:
+        period = "6m"
+
+    chart_points = []
+    if not error:
+        try:
+            history = fetch_price_history(symbol, days=period_options[period]["days"])
+            chart_points = _extract_chart_points(history)
+            if not chart_points:
+                error = f"No chart history returned for {symbol}."
+        except Exception as exc:
+            error = str(exc)
+
+    level_lines = [
+        {
+            "key": "spot",
+            "label": "Spot",
+            "price": round(stock_price, 2),
+            "tone": "spot",
+            "note": current_zone,
+        },
+        {
+            "key": "profit_limit",
+            "label": "Profit Limit",
+            "price": round(short_strike, 2),
+            "tone": "profit",
+            "note": "Short strike",
+        },
+        {
+            "key": "breakeven",
+            "label": "Breakeven",
+            "price": round(breakeven, 2),
+            "tone": "neutral",
+            "note": "Expiry P/L flips near zero",
+        },
+        {
+            "key": "loss_limit",
+            "label": "Loss Limit",
+            "price": round(long_strike, 2),
+            "tone": "loss",
+            "note": "Long strike",
+        },
+    ]
+
+    chart_query = {
+        "symbol": symbol,
+        "spread_type": spread_type,
+        "preset": preset,
+        "stock_price": round(stock_price, 2),
+        "short_strike": round(short_strike, 2),
+        "long_strike": round(long_strike, 2),
+        "credit": round(quoted_credit, 4),
+        "fill_mode": fill_mode,
+        "slippage": round(slippage, 2),
+        "contracts": contracts,
+        "dte": dte,
+        "iv_short": round(iv_short, 4),
+        "iv_long": round(iv_long, 4),
+        "rate": round(rate, 4),
+        "price_step": request.args.get("price_step") or "",
+        "price_from": request.args.get("price_from") or "",
+        "price_to": request.args.get("price_to") or "",
+    }
+    chart_query = {key: value for key, value in chart_query.items() if value != ""}
+
+    return render_template(
+        "chart.html",
+        error=error,
+        symbol=symbol,
+        spread_type=spread_type,
+        preset=preset,
+        today=dt.date.today().isoformat(),
+        period=period,
+        period_options=period_options,
+        chart_points=chart_points,
+        level_lines=level_lines,
+        chart_query=chart_query,
+        spread_sim_url=url_for("spread_sim", **chart_query),
+        stock_price=round(stock_price, 2),
+        short_strike=round(short_strike, 2),
+        long_strike=round(long_strike, 2),
+        breakeven=round(breakeven, 2),
+        max_profit=round(max_profit, 2),
+        max_loss=round(max_loss, 2),
+        entry_credit=round(entry_credit, 4),
+        contracts=contracts,
+        dte=dte,
+        current_zone=current_zone,
     )
 
 
