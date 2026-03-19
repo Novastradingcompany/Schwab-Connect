@@ -91,7 +91,7 @@
       if (!points.length) return;
 
       const NS = "http://www.w3.org/2000/svg";
-      const margin = { top: 24, right: 120, bottom: 42, left: 64 };
+      const margin = { top: 24, right: 190, bottom: 42, left: 64 };
 
       function createNode(name, attrs) {
         const node = document.createElementNS(NS, name);
@@ -183,13 +183,68 @@
             y2: y,
             class: "spread-chart-line tone-" + line.tone
           }));
-          const label = createNode("text", {
-            x: margin.left + plotWidth + 10,
-            y: y + 4,
-            class: "spread-chart-level-label tone-" + line.tone
+        });
+
+        const labelEntries = lines.map(function (line) {
+          return { line: line, y: yScale(line.price), labelY: yScale(line.price) };
+        }).sort(function (a, b) {
+          return a.y - b.y;
+        });
+
+        const minGap = 24;
+        const minLabelY = margin.top + 12;
+        const maxLabelY = margin.top + plotHeight - 10;
+        labelEntries.forEach(function (entry, index) {
+          let nextY = Math.max(entry.y, minLabelY);
+          if (index > 0) {
+            nextY = Math.max(nextY, labelEntries[index - 1].labelY + minGap);
+          }
+          entry.labelY = nextY;
+        });
+        for (let index = labelEntries.length - 2; index >= 0; index -= 1) {
+          if (labelEntries[index + 1].labelY > maxLabelY) {
+            labelEntries[index + 1].labelY = maxLabelY;
+          }
+          labelEntries[index].labelY = Math.min(
+            labelEntries[index].labelY,
+            labelEntries[index + 1].labelY - minGap
+          );
+        }
+        if (labelEntries.length) {
+          labelEntries[0].labelY = Math.max(labelEntries[0].labelY, minLabelY);
+        }
+
+        labelEntries.forEach(function (entry) {
+          const leaderStartX = margin.left + plotWidth;
+          const leaderMidX = leaderStartX + 10;
+          const labelX = leaderStartX + 18;
+
+          svg.appendChild(createNode("line", {
+            x1: leaderStartX,
+            y1: entry.y,
+            x2: leaderMidX,
+            y2: entry.labelY,
+            class: "spread-chart-leader tone-" + entry.line.tone
+          }));
+
+          const text = createNode("text", {
+            x: labelX,
+            y: entry.labelY + 4,
+            class: "spread-chart-level-label tone-" + entry.line.tone
           });
-          label.textContent = line.label + " $" + Number(line.price).toFixed(2);
-          svg.appendChild(label);
+          text.textContent = entry.line.label + " $" + Number(entry.line.price).toFixed(2);
+          svg.appendChild(text);
+
+          const bbox = text.getBBox();
+          const box = createNode("rect", {
+            x: bbox.x - 6,
+            y: bbox.y - 3,
+            width: bbox.width + 12,
+            height: bbox.height + 6,
+            rx: 8,
+            class: "spread-chart-label-box"
+          });
+          svg.insertBefore(box, text);
         });
 
         const areaPath = points.map(function (point, index) {

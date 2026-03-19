@@ -741,6 +741,16 @@ th.sortable[data-sort-dir="desc"]::after {
   font-weight: 700;
 }
 
+.spread-chart-label-box {
+  fill: rgba(255, 255, 255, 0.94);
+  stroke: rgba(14, 19, 26, 0.12);
+  stroke-width: 1;
+}
+
+.spread-chart-leader {
+  stroke-width: 1.5;
+}
+
 .spread-chart-focus {
   stroke: rgba(14, 19, 26, 0.35);
   stroke-width: 1;
