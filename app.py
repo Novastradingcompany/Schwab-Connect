@@ -4245,6 +4245,7 @@ def spread_chart():
     chart_warning = None
     latest_chart_close = None
     chart_gap_pct = None
+    live_quote_price = None
     if not error:
         try:
             history = fetch_price_history(symbol, days=period_options[period]["days"])
@@ -4263,6 +4264,12 @@ def spread_chart():
                         )
         except Exception as exc:
             error = str(exc)
+    if not error:
+        try:
+            live_quote = fetch_quotes([symbol]).get(symbol, {})
+            live_quote_price = _safe_float(live_quote.get("last") or live_quote.get("mark"))
+        except Exception:
+            live_quote_price = None
 
     level_lines = [
         {
@@ -4294,6 +4301,14 @@ def spread_chart():
             "note": "Long strike",
         },
     ]
+    if live_quote_price is not None and live_quote_price > 0:
+        level_lines.insert(0, {
+            "key": "live_quote",
+            "label": "Live Quote",
+            "price": round(live_quote_price, 2),
+            "tone": "live",
+            "note": "Current quote feed",
+        })
 
     chart_query = {
         "symbol": symbol,
@@ -4329,6 +4344,7 @@ def spread_chart():
         chart_warning=chart_warning,
         latest_chart_close=(round(latest_chart_close, 2) if latest_chart_close is not None else None),
         chart_gap_pct=(round(chart_gap_pct, 2) if chart_gap_pct is not None else None),
+        live_quote_price=(round(live_quote_price, 2) if live_quote_price is not None else None),
         level_lines=level_lines,
         chart_query=chart_query,
         spread_sim_url=url_for("spread_sim", **chart_query),

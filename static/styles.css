@@ -763,6 +763,10 @@ th.sortable[data-sort-dir="desc"]::after {
   stroke: #2563eb;
 }
 
+.spread-chart-line-live {
+  stroke: #0ea5a4;
+}
+
 .spread-chart-line-profit {
   stroke: #0f7a2f;
 }
@@ -825,6 +829,10 @@ th.sortable[data-sort-dir="desc"]::after {
 
 .tone-spot {
   color: #2563eb;
+}
+
+.tone-live {
+  color: #0ea5a4;
 }
 
 .tone-profit {

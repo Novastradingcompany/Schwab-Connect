@@ -41,6 +41,16 @@
   <section class="card">
     <div class="pl-summary-grid">
       <div class="pl-summary-card">
+        <div class="metric-label">Live Quote</div>
+        <div class="metric-value {% if live_quote_price is not none %}tone-live{% endif %}">
+          {% if live_quote_price is not none %}
+            ${{ "{:,.2f}".format(live_quote_price) }}
+          {% else %}
+            --
+          {% endif %}
+        </div>
+      </div>
+      <div class="pl-summary-card">
         <div class="metric-label">Current Spot</div>
         <div class="metric-value">${{ "{:,.2f}".format(stock_price) }}</div>
       </div>
@@ -73,6 +83,10 @@
     <div class="card-title">Price Chart</div>
     <div class="card-meta">Hover the chart to inspect price history. Horizontal guides show spot, short strike, breakeven, and long strike.</div>
     <div class="chart-visibility-controls no-print">
+      <label class="chart-toggle">
+        <input id="toggle-live-quote" type="checkbox" checked>
+        <span>Live Quote</span>
+      </label>
       <label class="chart-toggle">
         <input id="toggle-spot" type="checkbox" checked>
         <span>Spot</span>
@@ -107,10 +121,11 @@
       const svg = document.getElementById("spread-chart-svg");
       const tooltip = document.getElementById("spread-chart-tooltip");
       const legend = document.getElementById("spread-chart-legend");
+      const toggleLiveQuote = document.getElementById("toggle-live-quote");
       const toggleSpot = document.getElementById("toggle-spot");
       const toggleTargets = document.getElementById("toggle-targets");
       const toggleBreakeven = document.getElementById("toggle-breakeven");
-      if (!root || !svg || !tooltip || !legend || !toggleSpot || !toggleTargets || !toggleBreakeven) return;
+      if (!root || !svg || !tooltip || !legend || !toggleLiveQuote || !toggleSpot || !toggleTargets || !toggleBreakeven) return;
 
       const points = JSON.parse(root.dataset.points || "[]");
       const lines = JSON.parse(root.dataset.lines || "[]");
@@ -129,6 +144,7 @@
 
       function getVisibleLines() {
         return lines.filter(function (line) {
+          if (line.key === "live_quote") return toggleLiveQuote.checked;
           if (line.key === "spot") return toggleSpot.checked;
           if (line.key === "breakeven") return toggleBreakeven.checked;
           return toggleTargets.checked;
@@ -383,7 +399,7 @@
       }
 
       draw();
-      [toggleSpot, toggleTargets, toggleBreakeven].forEach(function (toggle) {
+      [toggleLiveQuote, toggleSpot, toggleTargets, toggleBreakeven].forEach(function (toggle) {
         toggle.addEventListener("change", draw);
       });
       window.addEventListener("resize", draw);
