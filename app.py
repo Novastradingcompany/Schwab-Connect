@@ -4631,7 +4631,6 @@ def tools():
         state=state,
         errors=errors,
         status=status,
-        refresh_result=refresh_result,
         token_b64_for_render=token_b64_for_render,
         token_b64_error=token_b64_error,
         email_test_result=email_test_result,
