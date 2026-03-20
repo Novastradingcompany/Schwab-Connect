@@ -72,24 +72,23 @@
 
   <section class="card">
     <details>
-      <summary>Schwab Status Check</summary>
+      <summary>Schwab Token Workflow</summary>
       <div class="details-body">
         <div>
-          Runtime token refresh updates this running instance only. To persist across restart/redeploy, update Render env <code>TOKEN_JSON_B64</code>.
+          Do not rely on an in-app token refresh button. Schwab auth is a browser-based OAuth flow and the reliable path is to run <code>connect.py</code> locally, then update Render env <code>TOKEN_JSON_B64</code>.
         </div>
-        <a class="button" href="{{ url_for('tools', refresh_token=1) }}">Refresh Schwab Token</a>
+        <div><strong>Recommended flow:</strong></div>
+        <div>1. Run <code>python connect.py</code> on your local machine.</div>
+        <div>2. Complete the Schwab login and approval flow in the browser.</div>
+        <div>3. Confirm your local <code>token.json</code> is updated.</div>
+        <div>4. Use <code>Show TOKEN_JSON_B64 Value</code> to generate the Render-safe base64 string.</div>
+        <div>5. Paste that value into Render env <code>TOKEN_JSON_B64</code>.</div>
+        <div>6. Redeploy the service.</div>
         <a class="button" href="{{ url_for('tools', show_token_b64=1) }}">Show TOKEN_JSON_B64 Value</a>
         <a class="button" href="{{ url_for('tools', check_schwab=1) }}">Run Status Check</a>
         <a class="button" href="{{ url_for('tools', send_test_email=1) }}">Send Test Email</a>
         {% if token_status %}
           <div>Token expires in: {{ (token_status.seconds_left // 3600) }}h</div>
-        {% endif %}
-        {% if refresh_result %}
-          {% if refresh_result.ok %}
-            <div>Token refreshed (HTTP {{ refresh_result.status_code }})</div>
-          {% else %}
-            <div>Token refresh failed: {{ refresh_result.error }}</div>
-          {% endif %}
         {% endif %}
         {% if status %}
           {% if status.ok %}

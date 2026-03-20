@@ -4537,7 +4537,6 @@ def tools():
     state = load_monitor_state()
     errors = load_error_log()
     status = None
-    refresh_result = None
     token_b64_for_render = None
     token_b64_error = None
     email_test_result = None
@@ -4553,13 +4552,6 @@ def tools():
         with open(ERROR_LOG_PATH, "w", encoding="utf-8") as f:
             json.dump([], f, indent=2)
         errors = []
-    if request.args.get("refresh_token") == "1":
-        try:
-            client = get_client()
-            response = schwab_request(lambda: client.get_accounts(), "refresh_token")
-            refresh_result = {"ok": True, "status_code": response.status_code}
-        except Exception as exc:
-            refresh_result = {"ok": False, "error": str(exc)}
     if request.args.get("show_token_b64") == "1":
         try:
             token_path = os.getenv("TOKEN_PATH", "token.json")

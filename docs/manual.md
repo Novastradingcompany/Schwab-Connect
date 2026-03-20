@@ -551,12 +551,25 @@ Use this page for system health, exports, and operational actions.
 - export tickets CSV
 - export summary CSV
 - open transaction reconcile debug
-- refresh Schwab token
 - show `TOKEN_JSON_B64`
 - copy `TOKEN_JSON_B64`
 - run Schwab status check
 - send test email
 - clear error log
+
+### Schwab token workflow
+
+Use `Tools` to follow the token instructions and generate `TOKEN_JSON_B64`, but run the actual OAuth refresh locally.
+
+Recommended flow:
+1. Run `python connect.py`
+2. Complete the Schwab browser login and approval flow
+3. Confirm local `token.json` is updated
+4. Use `Tools` -> `Show TOKEN_JSON_B64`
+5. Paste that value into Render env `TOKEN_JSON_B64`
+6. Redeploy
+
+Do not rely on an in-app token refresh button for Schwab OAuth.
 
 Use `Tools` first when data looks stale, alerts appear quiet, or token state is unclear.
 
@@ -597,8 +610,9 @@ Cause:
 Fix:
 1. Run `python connect.py`
 2. generate a fresh token
-3. update deployment env
-4. redeploy if persistence is needed
+3. use `Tools` -> `Show TOKEN_JSON_B64`
+4. update Render env
+5. redeploy
 
 ### B) Scanner credit does not match Schwab ticket
 
@@ -634,7 +648,8 @@ Cause:
 - token was refreshed in memory only
 
 Fix:
-- copy the `TOKEN_JSON_B64` value from `Tools`
+- run `python connect.py` locally first
+- then copy the `TOKEN_JSON_B64` value from `Tools`
 - update Render env
 - redeploy
 
