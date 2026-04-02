@@ -6,6 +6,7 @@ import os
 import threading
 import time
 import smtplib
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from functools import wraps
 from email.message import EmailMessage
 import csv
@@ -725,6 +726,25 @@ def symbol_has_options(symbol):
     return has_data
 
 
+def _scan_stock_mover_symbol(symbol, fetch_days, lookback_days):
+    history = fetch_price_history(symbol, days=fetch_days)
+    closes = _extract_closes(history)
+    if len(closes) <= lookback_days:
+        return {"symbol": symbol, "error": "insufficient history"}
+    last = closes[-1]
+    prior = closes[-1 - lookback_days]
+    if not prior or prior <= 0:
+        return {"symbol": symbol, "error": "invalid prior close"}
+    change_pct = ((last - prior) / prior) * 100
+    return {
+        "symbol": symbol,
+        "last": last,
+        "prior": prior,
+        "change_pct": change_pct,
+        "direction": "up" if change_pct >= 0 else "down",
+    }
+
+
 def scan_stock_movers(symbols, lookback_days=5, max_count=10, max_seconds=20):
     if not symbols:
         return {"movers": [], "errors": [], "lookback_days": lookback_days, "universe_size": 0}
@@ -752,32 +772,40 @@ def scan_stock_movers(symbols, lookback_days=5, max_count=10, max_seconds=20):
     movers = []
     errors = []
     start = time.monotonic()
+    max_workers = max(1, min(6, len(symbols)))
+    executor = ThreadPoolExecutor(max_workers=max_workers)
+    future_to_symbol = {
+        executor.submit(_scan_stock_mover_symbol, symbol, fetch_days, lookback_days): symbol
+        for symbol in symbols
+    }
+    pending = set(future_to_symbol.keys())
+    timed_out = False
+    try:
+        while pending:
+            remaining = max_seconds - (time.monotonic() - start)
+            if remaining <= 0:
+                timed_out = True
+                break
+            done, pending = wait(pending, timeout=remaining, return_when=FIRST_COMPLETED)
+            if not done:
+                timed_out = True
+                break
+            for future in done:
+                symbol = future_to_symbol[future]
+                try:
+                    result = future.result()
+                except Exception as exc:
+                    errors.append({"symbol": symbol, "error": public_error_message(exc, service="Schwab", action=f"loading movers history for {symbol}")})
+                    continue
+                if result.get("error"):
+                    errors.append({"symbol": symbol, "error": result["error"]})
+                    continue
+                movers.append(result)
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
-    for symbol in symbols:
-        if time.monotonic() - start >= max_seconds:
-            errors.append({"symbol": None, "error": f"scan_timeout_after_{max_seconds}s"})
-            break
-        try:
-            history = fetch_price_history(symbol, days=fetch_days)
-            closes = _extract_closes(history)
-            if len(closes) <= lookback_days:
-                errors.append({"symbol": symbol, "error": "insufficient history"})
-                continue
-            last = closes[-1]
-            prior = closes[-1 - lookback_days]
-            if not prior or prior <= 0:
-                errors.append({"symbol": symbol, "error": "invalid prior close"})
-                continue
-            change_pct = ((last - prior) / prior) * 100
-            movers.append({
-                "symbol": symbol,
-                "last": last,
-                "prior": prior,
-                "change_pct": change_pct,
-                "direction": "up" if change_pct >= 0 else "down",
-            })
-        except Exception as exc:
-            errors.append({"symbol": symbol, "error": str(exc)})
+    if timed_out:
+        errors.append({"symbol": None, "error": f"scan_timeout_after_{max_seconds}s"})
 
     movers.sort(key=lambda item: abs(item.get("change_pct") or 0), reverse=True)
 
