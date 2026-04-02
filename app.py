@@ -975,6 +975,30 @@ def _movers_directional_score(strategy, ret_5d, ret_20d, vol_20d):
     return max(0.0, r5) + (max(0.0, r20) * 0.5) + (vol * 0.35)
 
 
+def _weekly_scan_symbol(item, fetch_days, strategy):
+    symbol = item.get("symbol")
+    name = item.get("name") or symbol
+    history = fetch_price_history(symbol, days=fetch_days)
+    closes = _extract_closes(history)
+    metrics = compute_trend_metrics(closes)
+    ret_5d = metrics.get("ret_5d")
+    ret_20d = metrics.get("ret_20d")
+    vol_20d = _realized_vol_pct(closes, window=20)
+    if ret_5d is None and ret_20d is None:
+        return None
+    score = _movers_directional_score(strategy, ret_5d, ret_20d, vol_20d)
+    return {
+        "symbol": symbol,
+        "name": name,
+        "last": metrics.get("last"),
+        "ret_5d": ret_5d,
+        "ret_20d": ret_20d,
+        "vol_20d": vol_20d,
+        "score": score,
+        "direction": "up" if (ret_5d or 0) >= 0 else "down",
+    }
+
+
 def run_optionable_weekly_scan(
     universe,
     lookback_days=5,
@@ -1023,42 +1047,63 @@ def run_optionable_weekly_scan(
         if prev_lookback == int(lookback_days) and prev_strategy == strategy:
             start_index = int(previous.get("next_index", 0)) % total_symbols
 
+    ordered_items = []
     for step in range(total_symbols):
-        if time.monotonic() - started >= max_seconds:
-            break
         idx = (start_index + step) % total_symbols
         item = universe[idx]
-        symbol = item.get("symbol")
-        name = item.get("name") or symbol
-        if not symbol:
-            continue
-        scanned += 1
-        try:
-            history = fetch_price_history(symbol, days=fetch_days)
-            closes = _extract_closes(history)
-            metrics = compute_trend_metrics(closes)
-            ret_5d = metrics.get("ret_5d")
-            ret_20d = metrics.get("ret_20d")
-            vol_20d = _realized_vol_pct(closes, window=20)
-            if ret_5d is None and ret_20d is None:
-                continue
-            score = _movers_directional_score(strategy, ret_5d, ret_20d, vol_20d)
-            rows_cache[symbol] = {
-                "symbol": symbol,
-                "name": name,
-                "last": metrics.get("last"),
-                "ret_5d": ret_5d,
-                "ret_20d": ret_20d,
-                "vol_20d": vol_20d,
-                "score": score,
-                "direction": "up" if (ret_5d or 0) >= 0 else "down",
-            }
-        except Exception as exc:
-            errors.append(f"{symbol}: {exc}")
+        symbol = (item.get("symbol") or "").strip()
+        if symbol:
+            ordered_items.append(item)
+
+    max_workers = max(1, min(6, len(ordered_items)))
+    future_to_symbol = {}
+    next_submit = 0
+    timed_out = False
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        while next_submit < len(ordered_items) and len(future_to_symbol) < max_workers:
+            item = ordered_items[next_submit]
+            future = executor.submit(_weekly_scan_symbol, item, fetch_days, strategy)
+            future_to_symbol[future] = item.get("symbol")
+            next_submit += 1
+            scanned += 1
+
+        while future_to_symbol:
+            remaining = max_seconds - (time.monotonic() - started)
+            if remaining <= 0:
+                timed_out = True
+                break
+            done, pending = wait(set(future_to_symbol.keys()), timeout=remaining, return_when=FIRST_COMPLETED)
+            if not done:
+                timed_out = True
+                break
+            for future in done:
+                symbol = future_to_symbol.pop(future)
+                try:
+                    row = future.result()
+                    if row:
+                        rows_cache[row["symbol"]] = row
+                except Exception as exc:
+                    errors.append(f"{symbol}: {public_error_message(exc, service='Schwab', action=f'loading weekly scan history for {symbol}')}")
+
+                while next_submit < len(ordered_items) and len(future_to_symbol) < max_workers:
+                    if time.monotonic() - started >= max_seconds:
+                        timed_out = True
+                        break
+                    item = ordered_items[next_submit]
+                    new_future = executor.submit(_weekly_scan_symbol, item, fetch_days, strategy)
+                    future_to_symbol[new_future] = item.get("symbol")
+                    next_submit += 1
+                    scanned += 1
+            if timed_out:
+                break
+
+        if timed_out:
+            for future in future_to_symbol:
+                future.cancel()
 
     rows = list(rows_cache.values())
     rows.sort(key=lambda x: x.get("score") or 0, reverse=True)
-    timed_out = (time.monotonic() - started) >= max_seconds
+    timed_out = timed_out or ((time.monotonic() - started) >= max_seconds and next_submit < len(ordered_items))
     next_index = (start_index + scanned) % total_symbols if total_symbols else 0
     covered_count = len(rows_cache)
     snapshot = {
