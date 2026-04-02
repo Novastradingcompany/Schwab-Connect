@@ -82,6 +82,10 @@ MOVERS_SNAPSHOT_PATH = _data_file("movers_snapshot.json")
 MANUAL_PATH = os.path.join("docs", "manual.md")
 _QUOTE_CACHE = {}
 _QUOTE_CACHE_TTL = 15
+_POSITIONS_CACHE = {"ts": 0.0, "value": []}
+_POSITIONS_CACHE_TTL = 15
+_ACCOUNTS_SUMMARY_CACHE = {"ts": 0.0, "value": []}
+_ACCOUNTS_SUMMARY_CACHE_TTL = 15
 _PRICE_HISTORY_CACHE = {}
 _PRICE_HISTORY_CACHE_TTL = 300
 _RESEARCH_CACHE = {}
@@ -482,15 +486,20 @@ def schwab_request(action, context):
             return action()
         except Exception as exc:
             last_exc = exc
+            if _is_schwab_auth_error(exc):
+                _reset_schwab_client()
             _set_schwab_error(exc, context)
             log_error(exc, context=f"schwab:{context}:attempt{attempt + 1}")
             time.sleep(1 + attempt)
-    raise ExternalServiceError(
+    wrapped = ExternalServiceError(
         "Schwab",
         context,
         public_error_message(last_exc, service="Schwab", action=context),
         original=last_exc,
-    ) from last_exc
+    )
+    if _is_schwab_auth_error(last_exc):
+        _reset_schwab_client()
+    raise wrapped from last_exc
 
 
 def schwab_response(action, context):
@@ -1290,6 +1299,32 @@ def _best_token_candidate(candidates):
     return valid[0]
 
 
+def _reset_schwab_client():
+    global _CLIENT
+    _CLIENT = None
+
+
+def _is_schwab_auth_error(exc):
+    if isinstance(exc, ExternalServiceError):
+        original = exc.original or exc
+    else:
+        original = exc
+    status_code = getattr(getattr(original, "response", None), "status_code", None)
+    if status_code in {401, 403}:
+        return True
+    text = str(original or "").lower()
+    return any(token in text for token in (
+        "access token",
+        "refresh token",
+        "invalid token",
+        "token expired",
+        "authorization",
+        "unauthorized",
+        "forbidden",
+        "authentication",
+    ))
+
+
 def get_client():
     global _CLIENT
     if _CLIENT is None:
@@ -1340,8 +1375,9 @@ def ensure_token_file():
         token_dir = os.path.dirname(token_path)
         if token_dir and not os.path.exists(token_dir):
             os.makedirs(token_dir, exist_ok=True)
-        with open(token_path, "w", encoding="utf-8") as f:
-            f.write(selected["raw"])
+        if raw_file != selected["raw"]:
+            with open(token_path, "w", encoding="utf-8") as f:
+                f.write(selected["raw"])
         return token_path
 
     # No token file and no usable env token - return None
@@ -1440,6 +1476,11 @@ def parse_option_symbol(symbol):
 
 
 def fetch_positions():
+    now = time.time()
+    cached = _POSITIONS_CACHE.get("value", [])
+    if cached and (now - _POSITIONS_CACHE.get("ts", 0.0)) <= _POSITIONS_CACHE_TTL:
+        return cached
+
     client = get_client()
     data = schwab_json(lambda: client.get_accounts(fields=["positions"]), "get_accounts_positions")
     positions = []
@@ -1510,6 +1551,8 @@ def fetch_positions():
                 "dte": dte,
             })
 
+    _POSITIONS_CACHE["ts"] = now
+    _POSITIONS_CACHE["value"] = positions
     return positions
 
 
@@ -1557,6 +1600,19 @@ def normalize_quote(raw):
         "vega": _safe_float(quote.get("vega")),
         "iv": _safe_float(quote.get("volatility") or quote.get("impliedVolatility")),
     }
+
+
+def fetch_accounts_summary():
+    now = time.time()
+    cached = _ACCOUNTS_SUMMARY_CACHE.get("value", [])
+    if cached and (now - _ACCOUNTS_SUMMARY_CACHE.get("ts", 0.0)) <= _ACCOUNTS_SUMMARY_CACHE_TTL:
+        return cached
+
+    client = get_client()
+    data = schwab_json(lambda: client.get_accounts(), "get_accounts_summary")
+    _ACCOUNTS_SUMMARY_CACHE["ts"] = now
+    _ACCOUNTS_SUMMARY_CACHE["value"] = data
+    return data
 
 
 def fetch_quotes(symbols):
@@ -1845,11 +1901,32 @@ def fetch_option_chain(symbol):
 
 def get_token_status():
     token_path = os.getenv("TOKEN_PATH", "token.json")
-    if not os.path.exists(token_path):
-        return None
     try:
-        with open(token_path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
+        raw_file = None
+        if os.path.exists(token_path):
+            with open(token_path, "r", encoding="utf-8") as f:
+                raw_file = f.read()
+        token_json = os.getenv("TOKEN_JSON")
+        token_b64 = os.getenv("TOKEN_JSON_B64")
+        decoded_b64 = None
+        if token_b64:
+            decoded_b64 = base64.b64decode(token_b64).decode("utf-8")
+        file_meta = _parse_token_payload(raw_file)
+        env_meta = _best_token_candidate(
+            [
+                _parse_token_payload(token_json),
+                _parse_token_payload(decoded_b64),
+            ]
+        )
+        payload_meta = _best_token_candidate(
+            [
+                file_meta,
+                env_meta,
+            ]
+        )
+        if not payload_meta:
+            return None
+        payload = json.loads(payload_meta["raw"])
         token = payload.get("token", payload)
         expires_at = token.get("expires_at")
         if not expires_at:
@@ -1858,6 +1935,7 @@ def get_token_status():
         return {
             "expires_at": int(expires_at),
             "seconds_left": int(expires_at) - now,
+            "source": "render_env" if env_meta and payload_meta["raw"] == env_meta["raw"] else "token_file",
         }
     except Exception:
         return None
@@ -2890,8 +2968,7 @@ def _summary_asset_type(raw_asset_type, symbol=None):
 
 
 def fetch_account_balance_totals():
-    client = get_client()
-    data = schwab_json(lambda: client.get_accounts(), "get_accounts_balances")
+    data = fetch_accounts_summary()
     totals = {"cash": 0.0, "liquidation": 0.0, "equity": 0.0}
     for entry in data or []:
         acct = (entry or {}).get("securitiesAccount", {}) or {}
@@ -3157,8 +3234,7 @@ def index():
     error = None
     summary = []
     try:
-        client = get_client()
-        data = schwab_json(lambda: client.get_accounts(), "get_accounts_index")
+        data = fetch_accounts_summary()
         for entry in data:
             account = entry.get("securitiesAccount", {})
             balances = account.get("currentBalances", {})
@@ -3506,8 +3582,7 @@ def tickets():
     tickets_changed = False
     accounts = []
     try:
-        client = get_client()
-        data = schwab_json(lambda: client.get_accounts(), "get_accounts_ticket_list")
+        data = fetch_accounts_summary()
         accounts = [
             entry.get("securitiesAccount", {}).get("accountNumber")
             for entry in data
