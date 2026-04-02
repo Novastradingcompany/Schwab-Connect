@@ -81,6 +81,12 @@ MOVERS_SNAPSHOT_PATH = _data_file("movers_snapshot.json")
 MANUAL_PATH = os.path.join("docs", "manual.md")
 _QUOTE_CACHE = {}
 _QUOTE_CACHE_TTL = 15
+_PRICE_HISTORY_CACHE = {}
+_PRICE_HISTORY_CACHE_TTL = 300
+_RESEARCH_CACHE = {}
+_RESEARCH_CACHE_TTL = 300
+_MARKET_RESEARCH_CACHE = {"ts": 0.0, "value": []}
+_MARKET_RESEARCH_CACHE_TTL = 300
 MARKET_TICKERS = ["SPY", "QQQ", "IWM", "DIA"]
 _AUTH_CACHE = None
 _LAST_SCHWAB_ERROR = None
@@ -514,10 +520,16 @@ def schwab_json(action, context):
 
 
 def fetch_price_history(symbol, days=365):
+    cache_key = (str(symbol or "").upper().strip(), int(days or 365))
+    now = time.time()
+    cached = _PRICE_HISTORY_CACHE.get(cache_key)
+    if cached and (now - cached["ts"]) <= _PRICE_HISTORY_CACHE_TTL:
+        return cached["data"]
+
     client = get_client()
     end_date = dt.datetime.now(dt.timezone.utc)
     start_date = end_date - dt.timedelta(days=days)
-    return schwab_json(
+    data = schwab_json(
         lambda: client.get_price_history(
             symbol,
             period_type=client.PriceHistory.PeriodType.YEAR,
@@ -530,6 +542,8 @@ def fetch_price_history(symbol, days=365):
         ),
         f"get_price_history:{symbol}",
     )
+    _PRICE_HISTORY_CACHE[cache_key] = {"ts": now, "data": data}
+    return data
 
 
 def _extract_closes(history):
@@ -603,22 +617,34 @@ def compute_trend_metrics(closes):
 
 
 def get_research_summary(symbol):
+    normalized = (symbol or "").upper().strip()
+    now = time.time()
+    cached = _RESEARCH_CACHE.get(normalized)
+    if cached and (now - cached["ts"]) <= _RESEARCH_CACHE_TTL:
+        return cached["data"]
+
     summary = {}
     try:
-        history = fetch_price_history(symbol, days=365)
+        history = fetch_price_history(normalized, days=365)
         closes = _extract_closes(history)
-        summary["symbol"] = symbol
+        summary["symbol"] = normalized
         summary["metrics"] = compute_trend_metrics(closes)
     except Exception as exc:
-        summary["symbol"] = symbol
-        summary["error"] = str(exc)
+        summary["symbol"] = normalized
+        summary["error"] = public_error_message(exc, service="Schwab", action=f"loading research for {normalized}")
+    _RESEARCH_CACHE[normalized] = {"ts": now, "data": summary}
     return summary
 
 
 def get_market_research():
-    research = []
-    for symbol in MARKET_TICKERS:
-        research.append(get_research_summary(symbol))
+    now = time.time()
+    cached = _MARKET_RESEARCH_CACHE.get("value", [])
+    if cached and (now - _MARKET_RESEARCH_CACHE.get("ts", 0.0)) <= _MARKET_RESEARCH_CACHE_TTL:
+        return cached
+
+    research = [get_research_summary(symbol) for symbol in MARKET_TICKERS]
+    _MARKET_RESEARCH_CACHE["ts"] = now
+    _MARKET_RESEARCH_CACHE["value"] = research
     return research
 
 
