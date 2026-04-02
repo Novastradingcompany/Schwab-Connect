@@ -23,6 +23,11 @@ import httpx
 from schwab.auth import client_from_token_file
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from nova.external_services import (
+    ExternalServiceError,
+    InputError,
+    public_error_message,
+)
 from nova.nova_rules import get_max_loss_threshold, NOVA_RULES
 from nova.strategies.bull_put import scan_bull_put
 from nova.strategies.bear_call import scan_bear_call
@@ -124,6 +129,79 @@ NOVA_MODEL_OPTIONS = [
 ]
 
 
+def _backup_corrupt_json(path):
+    timestamp = dt.datetime.now().strftime("%Y%m%d%H%M%S")
+    backup_path = f"{path}.corrupt.{timestamp}"
+    try:
+        shutil.copyfile(path, backup_path)
+        return backup_path
+    except Exception:
+        return None
+
+
+def _load_json_file(path, default, *, context="", expect_type=None):
+    if not os.path.exists(path):
+        return default
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if expect_type and not isinstance(data, expect_type):
+            raise ValueError(f"Expected {expect_type.__name__}, got {type(data).__name__}")
+        return data
+    except Exception as exc:
+        backup_path = _backup_corrupt_json(path)
+        logging.warning(
+            "Failed to load JSON from %s (%s). Using default.%s",
+            path,
+            exc,
+            f" Backup: {backup_path}" if backup_path else "",
+        )
+        return default
+
+
+def _save_json_file(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def _coerce_float(value, field_name, *, default=None, minimum=None, maximum=None, allow_blank=False):
+    text = str(value or "").strip()
+    if not text:
+        if allow_blank:
+            return default
+        if default is not None:
+            return default
+        raise InputError(f"{field_name} is required.")
+    try:
+        number = float(text)
+    except (TypeError, ValueError) as exc:
+        raise InputError(f"{field_name} must be a number.") from exc
+    if minimum is not None and number < minimum:
+        raise InputError(f"{field_name} must be at least {minimum}.")
+    if maximum is not None and number > maximum:
+        raise InputError(f"{field_name} must be at most {maximum}.")
+    return number
+
+
+def _coerce_int(value, field_name, *, default=None, minimum=None, maximum=None, allow_blank=False):
+    text = str(value or "").strip()
+    if not text:
+        if allow_blank:
+            return default
+        if default is not None:
+            return default
+        raise InputError(f"{field_name} is required.")
+    try:
+        number = int(text)
+    except (TypeError, ValueError) as exc:
+        raise InputError(f"{field_name} must be a whole number.") from exc
+    if minimum is not None and number < minimum:
+        raise InputError(f"{field_name} must be at least {minimum}.")
+    if maximum is not None and number > maximum:
+        raise InputError(f"{field_name} must be at most {maximum}.")
+    return number
+
+
 def monitor_enabled():
     return os.getenv("NOVA_MONITOR_ENABLED", "1").strip().lower() not in {"0", "false", "off", "no"}
 
@@ -221,18 +299,13 @@ def load_settings():
     if not os.path.exists(SETTINGS_PATH):
         save_settings(defaults)
         return defaults
-    try:
-        with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        defaults.update({k: data.get(k, v) for k, v in defaults.items()})
-        return defaults
-    except Exception:
-        return defaults
+    data = _load_json_file(SETTINGS_PATH, {}, context="settings", expect_type=dict)
+    defaults.update({k: data.get(k, v) for k, v in defaults.items()})
+    return defaults
 
 
 def save_settings(data):
-    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    _save_json_file(SETTINGS_PATH, data)
 
 
 def _nova_model_options(current):
@@ -299,48 +372,27 @@ def require_login():
 
 
 def load_alerts():
-    if not os.path.exists(ALERTS_PATH):
-        return []
-    try:
-        with open(ALERTS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+    return _load_json_file(ALERTS_PATH, [], context="alerts", expect_type=list)
 
 
 def save_alerts(data):
-    with open(ALERTS_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    _save_json_file(ALERTS_PATH, data)
 
 
 def load_alert_state():
-    if not os.path.exists(ALERTS_STATE_PATH):
-        return {"sent_ids": []}
-    try:
-        with open(ALERTS_STATE_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {"sent_ids": []}
+    return _load_json_file(ALERTS_STATE_PATH, {"sent_ids": []}, context="alerts_state", expect_type=dict)
 
 
 def save_alert_state(data):
-    with open(ALERTS_STATE_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    _save_json_file(ALERTS_STATE_PATH, data)
 
 
 def load_monitor_state():
-    if not os.path.exists(MONITOR_STATE_PATH):
-        return {}
-    try:
-        with open(MONITOR_STATE_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {}
+    return _load_json_file(MONITOR_STATE_PATH, {}, context="monitor_state", expect_type=dict)
 
 
 def save_monitor_state(data):
-    with open(MONITOR_STATE_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    _save_json_file(MONITOR_STATE_PATH, data)
 
 
 def _parse_iso_dt(value):
@@ -385,41 +437,35 @@ def _parse_date_list(value):
 
 def log_error(message, context=""):
     tz = ZoneInfo(load_settings().get("timezone", "UTC"))
+    exc = message if isinstance(message, BaseException) else None
     entry = {
         "timestamp": dt.datetime.now(tz).isoformat(timespec="seconds"),
         "message": str(message),
+        "type": type(exc).__name__ if exc else "Message",
         "context": context,
     }
-    data = []
-    if os.path.exists(ERROR_LOG_PATH):
-        try:
-            with open(ERROR_LOG_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception:
-            data = []
+    data = _load_json_file(ERROR_LOG_PATH, [], context="error_log", expect_type=list) or []
     data.append(entry)
     data = data[-200:]
-    with open(ERROR_LOG_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    _save_json_file(ERROR_LOG_PATH, data)
 
 
 def _set_schwab_error(exc, context):
     global _LAST_SCHWAB_ERROR
     _LAST_SCHWAB_ERROR = {
         "timestamp": time.time(),
-        "error": str(exc),
+        "error": public_error_message(exc, service="Schwab"),
         "context": context,
     }
 
 
 def load_error_log():
-    if not os.path.exists(ERROR_LOG_PATH):
-        return []
-    try:
-        with open(ERROR_LOG_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+    return _load_json_file(ERROR_LOG_PATH, [], context="error_log", expect_type=list)
+
+
+def _handle_route_error(exc, context, service=None, action=None):
+    log_error(exc, context=context)
+    return public_error_message(exc, service=service, action=action)
 
 
 def schwab_request(action, context):
@@ -432,14 +478,46 @@ def schwab_request(action, context):
             _set_schwab_error(exc, context)
             log_error(exc, context=f"schwab:{context}:attempt{attempt + 1}")
             time.sleep(1 + attempt)
-    raise last_exc
+    raise ExternalServiceError(
+        "Schwab",
+        context,
+        public_error_message(last_exc, service="Schwab", action=context),
+        original=last_exc,
+    ) from last_exc
+
+
+def schwab_response(action, context):
+    response = schwab_request(action, context)
+    try:
+        response.raise_for_status()
+    except Exception as exc:
+        raise ExternalServiceError(
+            "Schwab",
+            context,
+            public_error_message(exc, service="Schwab", action=context),
+            original=exc,
+        ) from exc
+    return response
+
+
+def schwab_json(action, context):
+    response = schwab_response(action, context)
+    try:
+        return response.json()
+    except Exception as exc:
+        raise ExternalServiceError(
+            "Schwab",
+            context,
+            "Schwab returned an invalid response. Try again.",
+            original=exc,
+        ) from exc
 
 
 def fetch_price_history(symbol, days=365):
     client = get_client()
     end_date = dt.datetime.now(dt.timezone.utc)
     start_date = end_date - dt.timedelta(days=days)
-    response = schwab_request(
+    return schwab_json(
         lambda: client.get_price_history(
             symbol,
             period_type=client.PriceHistory.PeriodType.YEAR,
@@ -452,8 +530,6 @@ def fetch_price_history(symbol, days=365):
         ),
         f"get_price_history:{symbol}",
     )
-    response.raise_for_status()
-    return response.json()
 
 
 def _extract_closes(history):
@@ -736,36 +812,22 @@ def load_watchlist():
     if not os.path.exists(WATCHLIST_PATH):
         save_watchlist([])
         return []
-    try:
-        with open(WATCHLIST_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, list):
-            return data
-        return []
-    except Exception:
-        return []
+    return _load_json_file(WATCHLIST_PATH, [], context="watchlist", expect_type=list)
 
 
 def save_watchlist(data):
-    with open(WATCHLIST_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    _save_json_file(WATCHLIST_PATH, data)
 
 
 def load_watchlist_notes():
     if not os.path.exists(WATCHLIST_NOTES_PATH):
         save_watchlist_notes({})
         return {}
-    try:
-        with open(WATCHLIST_NOTES_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+    return _load_json_file(WATCHLIST_NOTES_PATH, {}, context="watchlist_notes", expect_type=dict)
 
 
 def save_watchlist_notes(data):
-    with open(WATCHLIST_NOTES_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    _save_json_file(WATCHLIST_NOTES_PATH, data)
 
 
 def list_optionable_universe_files():
@@ -807,19 +869,11 @@ def load_optionable_universe(universe_path=None):
 
 
 def load_movers_snapshot():
-    if not os.path.exists(MOVERS_SNAPSHOT_PATH):
-        return None
-    try:
-        with open(MOVERS_SNAPSHOT_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else None
-    except Exception:
-        return None
+    return _load_json_file(MOVERS_SNAPSHOT_PATH, None, context="movers_snapshot", expect_type=dict)
 
 
 def save_movers_snapshot(data):
-    with open(MOVERS_SNAPSHOT_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    _save_json_file(MOVERS_SNAPSHOT_PATH, data)
 
 
 def load_manual_text():
@@ -977,38 +1031,22 @@ def load_tickets():
     if not os.path.exists(TICKETS_PATH):
         save_tickets([])
         return []
-    try:
-        with open(TICKETS_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, list):
-            return data
-        return []
-    except Exception:
-        return []
+    return _load_json_file(TICKETS_PATH, [], context="tickets", expect_type=list)
 
 
 def save_tickets(data):
-    with open(TICKETS_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    _save_json_file(TICKETS_PATH, data)
 
 
 def load_trade_journal():
     if not os.path.exists(TRADE_JOURNAL_PATH):
         save_trade_journal([])
         return []
-    try:
-        with open(TRADE_JOURNAL_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, list):
-            return data
-        return []
-    except Exception:
-        return []
+    return _load_json_file(TRADE_JOURNAL_PATH, [], context="trade_journal", expect_type=list)
 
 
 def save_trade_journal(data):
-    with open(TRADE_JOURNAL_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    _save_json_file(TRADE_JOURNAL_PATH, data)
 
 
 def _parse_date_safe(raw):
@@ -1304,9 +1342,7 @@ def parse_option_symbol(symbol):
 
 def fetch_positions():
     client = get_client()
-    response = schwab_request(lambda: client.get_accounts(fields=["positions"]), "get_accounts_positions")
-    response.raise_for_status()
-    data = response.json()
+    data = schwab_json(lambda: client.get_accounts(fields=["positions"]), "get_accounts_positions")
     positions = []
     for entry in data:
         account = entry.get("securitiesAccount", {})
@@ -1441,9 +1477,7 @@ def fetch_quotes(symbols):
         return cached
 
     client = get_client()
-    response = schwab_request(lambda: client.get_quotes(missing), "get_quotes")
-    response.raise_for_status()
-    data = response.json()
+    data = schwab_json(lambda: client.get_quotes(missing), "get_quotes")
     quotes = {}
     for symbol, payload in data.items():
         quotes[symbol] = normalize_quote(payload)
@@ -1677,7 +1711,7 @@ def fetch_option_chain(symbol):
     if err and now - err["ts"] <= 120:
         raise RuntimeError(f"Recent Schwab error for {symbol}; retry in a bit.")
     client = get_client()
-    response = schwab_request(
+    response = schwab_response(
         lambda: client.get_option_chain(symbol, include_underlying_quote=True),
         "get_option_chain",
     )
@@ -1689,7 +1723,7 @@ def fetch_option_chain(symbol):
             body = ""
         too_big = "TooBigBody" in body or "Body buffer overflow" in body
         if too_big:
-            response = schwab_request(
+            response = schwab_response(
                 lambda: client.get_option_chain(
                     symbol,
                     include_underlying_quote=True,
@@ -1697,8 +1731,15 @@ def fetch_option_chain(symbol):
                 ),
                 "get_option_chain_limited",
             )
-    response.raise_for_status()
-    data = response.json()
+    try:
+        data = response.json()
+    except Exception as exc:
+        raise ExternalServiceError(
+            "Schwab",
+            "get_option_chain",
+            "Schwab returned an invalid option chain response. Try again.",
+            original=exc,
+        ) from exc
     _CHAIN_CACHE[symbol] = {"ts": now, "data": data}
     return data
 
@@ -1803,6 +1844,79 @@ def summarize_scan(results_df):
         df = df.sort_values(by="POP %", ascending=False)
     top = df.iloc[0].to_dict() if not df.empty else None
     return {"count": len(df), "top": top}
+
+
+def _normalize_pricing_mode(value, *, default="mid"):
+    pricing_mode = (value or default).strip().lower()
+    if pricing_mode not in {"mid", "natural", "custom"}:
+        return default
+    return pricing_mode
+
+
+def _read_scan_params(source):
+    symbol = (source.get("symbol") or "NVDA").upper().strip() or "NVDA"
+    strategy = (source.get("strategy") or "bull_put").strip() or "bull_put"
+    width = _coerce_float(source.get("width"), "Width", default=2.5, minimum=0.01)
+    min_pop = _coerce_float(source.get("min_pop"), "Min POP", default=80.0, minimum=0.0, maximum=100.0)
+    contracts = _coerce_int(source.get("contracts"), "Contracts", default=1, minimum=1)
+    raw_mode = (source.get("raw") or "") == "1"
+    pricing_mode = _normalize_pricing_mode(source.get("pricing_mode"), default="mid")
+    custom_limit_raw = (source.get("custom_limit") or "").strip()
+    custom_limit = None
+    if custom_limit_raw:
+        custom_limit = _coerce_float(custom_limit_raw, "Custom limit", minimum=0.0)
+    cash_balance = _coerce_int(source.get("cash"), "Cash balance", default=2000, minimum=0)
+    default_max_loss = get_max_loss_threshold(cash_balance)
+    max_loss = _coerce_float(source.get("max_loss"), "Max loss", default=float(default_max_loss), minimum=0.0)
+    expiry = (source.get("expiry") or "").strip()
+    selected_index = (source.get("trade_index") or "").strip() or None
+    return {
+        "symbol": symbol,
+        "strategy": strategy,
+        "width": width,
+        "min_pop": min_pop,
+        "contracts": contracts,
+        "raw_mode": raw_mode,
+        "pricing_mode": pricing_mode,
+        "custom_limit_raw": custom_limit_raw,
+        "custom_limit": custom_limit,
+        "cash_balance": cash_balance,
+        "max_loss": max_loss,
+        "expiry": expiry,
+        "selected_index": selected_index,
+    }
+
+
+def _read_spread_sim_params(source):
+    symbol = (source.get("symbol") or "SNDK").strip().upper() or "SNDK"
+    spread_type = (source.get("spread_type") or "bull_put").strip().lower()
+    if spread_type not in {"bull_put", "bear_call"}:
+        raise InputError("Spread type must be bull_put or bear_call.")
+    fill_mode = (source.get("fill_mode") or "mid").strip().lower()
+    if fill_mode not in {"mid", "natural"}:
+        raise InputError("Fill mode must be mid or natural.")
+    preset = (source.get("preset") or "custom").strip().lower()
+    if preset not in SPREAD_SIM_PRESETS:
+        raise InputError("Preset must be custom, conservative, income, or high_pop.")
+    return {
+        "symbol": symbol,
+        "spread_type": spread_type,
+        "fill_mode": fill_mode,
+        "preset": preset,
+        "stock_price": _coerce_float(source.get("stock_price"), "Stock price", allow_blank=True, minimum=0.01),
+        "short_strike": _coerce_float(source.get("short_strike"), "Short strike", allow_blank=True, minimum=0.01),
+        "long_strike": _coerce_float(source.get("long_strike"), "Long strike", allow_blank=True, minimum=0.01),
+        "credit": _coerce_float(source.get("credit"), "Credit", allow_blank=True, minimum=0.0),
+        "slippage": _coerce_float(source.get("slippage"), "Slippage", allow_blank=True, minimum=0.0),
+        "contracts": _coerce_int(source.get("contracts"), "Contracts", default=1, minimum=1),
+        "dte": _coerce_int(source.get("dte"), "DTE", default=7, minimum=0),
+        "iv_short": _coerce_float(source.get("iv_short"), "Short IV", allow_blank=True, minimum=0.01),
+        "iv_long": _coerce_float(source.get("iv_long"), "Long IV", allow_blank=True, minimum=0.01),
+        "rate": _coerce_float(source.get("rate"), "Rate", allow_blank=True, minimum=0.0),
+        "price_step": _coerce_float(source.get("price_step"), "Price step", allow_blank=True, minimum=0.01),
+        "price_from": _coerce_float(source.get("price_from"), "Price from", allow_blank=True, minimum=0.01),
+        "price_to": _coerce_float(source.get("price_to"), "Price to", allow_blank=True, minimum=0.01),
+    }
 
 
 def parse_legs_from_trade(trade_text):
@@ -2255,9 +2369,7 @@ def get_account_hashes():
         return cached
 
     client = get_client()
-    response = schwab_request(lambda: client.get_account_numbers(), "get_account_numbers")
-    response.raise_for_status()
-    data = response.json()
+    data = schwab_json(lambda: client.get_account_numbers(), "get_account_numbers")
     hashes = {row.get("accountNumber"): row.get("hashValue") for row in data}
     _ACCOUNT_HASH_CACHE["ts"] = now
     _ACCOUNT_HASH_CACHE["value"] = hashes
@@ -2321,7 +2433,7 @@ def fetch_transactions_one_year():
             window_start = max(start_date, window_end - dt.timedelta(days=59))
             try:
                 # Pull default transaction view.
-                response = schwab_request(
+                data = schwab_json(
                     lambda: client.get_transactions(
                         acct_hash,
                         start_date=window_start,
@@ -2329,15 +2441,13 @@ def fetch_transactions_one_year():
                     ),
                     "get_transactions",
                 )
-                response.raise_for_status()
-                data = response.json()
                 if isinstance(data, list):
                     for txn in data:
                         _ingest_txn(txn, acct_num)
 
                 # Pull TRADE-only view as well. Schwab sometimes places the
                 # usable option cashflow here while default rows show zeros.
-                trade_response = schwab_request(
+                trade_data = schwab_json(
                     lambda: client.get_transactions(
                         acct_hash,
                         start_date=window_start,
@@ -2346,8 +2456,6 @@ def fetch_transactions_one_year():
                     ),
                     "get_transactions_trade_only",
                 )
-                trade_response.raise_for_status()
-                trade_data = trade_response.json()
                 if isinstance(trade_data, list):
                     for txn in trade_data:
                         _ingest_txn(txn, acct_num)
@@ -2684,9 +2792,7 @@ def _summary_asset_type(raw_asset_type, symbol=None):
 
 def fetch_account_balance_totals():
     client = get_client()
-    response = schwab_request(lambda: client.get_accounts(), "get_accounts_balances")
-    response.raise_for_status()
-    data = response.json()
+    data = schwab_json(lambda: client.get_accounts(), "get_accounts_balances")
     totals = {"cash": 0.0, "liquidation": 0.0, "equity": 0.0}
     for entry in data or []:
         acct = (entry or {}).get("securitiesAccount", {}) or {}
@@ -2919,7 +3025,7 @@ def callback():
         return redirect(url_for("index"))
     except Exception as exc:
         log_error(exc, context="callback")
-        return f"Callback error: {exc}", 500
+        return "Callback error: Schwab authentication failed. Check the callback configuration and try again.", 500
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -2953,9 +3059,7 @@ def index():
     summary = []
     try:
         client = get_client()
-        response = client.get_accounts()
-        response.raise_for_status()
-        data = response.json()
+        data = schwab_json(lambda: client.get_accounts(), "get_accounts_index")
         for entry in data:
             account = entry.get("securitiesAccount", {})
             balances = account.get("currentBalances", {})
@@ -2967,7 +3071,7 @@ def index():
                 "equity": balances.get("equity"),
             })
     except Exception as exc:
-        error = str(exc)
+        error = _handle_route_error(exc, "route:index", service="Schwab", action="loading account summary")
 
     return render_template("index.html", summary=summary, error=error)
 
@@ -2991,7 +3095,7 @@ def positions():
             pos["note"] = note
             rows.append(pos)
     except Exception as exc:
-        error = str(exc)
+        error = _handle_route_error(exc, "route:positions", service="Schwab", action="loading positions")
 
     return render_template("positions.html", rows=rows, error=error)
 
@@ -2999,40 +3103,68 @@ def positions():
 @app.route("/alerts", methods=["GET", "POST"])
 def alerts():
     settings = load_settings()
-    if request.method == "POST":
-        settings["profit_target_pct"] = float(request.form.get("profit_target_pct", settings["profit_target_pct"]))
-        settings["max_loss_pct"] = float(request.form.get("max_loss_pct", settings["max_loss_pct"]))
-        settings["dte_exit"] = int(request.form.get("dte_exit", settings["dte_exit"]))
-        settings["nova_judgment"] = request.form.get("nova_judgment") == "on"
-        settings["polling_minutes"] = int(request.form.get("polling_minutes", settings["polling_minutes"]))
-        requested_model = request.form.get("nova_model", settings["nova_model"])
-        if requested_model in _nova_model_options(settings["nova_model"]):
-            settings["nova_model"] = requested_model
-        settings["nova_role"] = request.form.get("nova_role", settings.get("nova_role", "")).strip()
-        settings["monitor_market_hours_only"] = request.form.get("monitor_market_hours_only") == "on"
-        settings["monitor_weekdays_only"] = request.form.get("monitor_weekdays_only") == "on"
-        settings["market_open_time"] = request.form.get("market_open_time", settings["market_open_time"]).strip()
-        settings["market_close_time"] = request.form.get("market_close_time", settings["market_close_time"]).strip()
-        settings["market_holidays"] = request.form.get("market_holidays", settings.get("market_holidays", "")).strip()
-        settings["movers_lookback_days"] = int(request.form.get(
-            "movers_lookback_days",
-            settings.get("movers_lookback_days", 5),
-        ))
-        settings["movers_count"] = int(request.form.get(
-            "movers_count",
-            settings.get("movers_count", 10),
-        ))
-        settings["movers_include_positions"] = request.form.get("movers_include_positions") == "on"
-        settings["movers_universe"] = request.form.get("movers_universe", settings.get("movers_universe", "")).strip()
-        settings["movers_use_sp500"] = request.form.get("movers_use_sp500") == "on"
-        settings["movers_max_seconds"] = int(request.form.get(
-            "movers_max_seconds",
-            settings.get("movers_max_seconds", 20),
-        ))
-        save_settings(settings)
-        return redirect(url_for("alerts"))
-
     error = None
+    if request.method == "POST":
+        try:
+            settings["profit_target_pct"] = _coerce_float(
+                request.form.get("profit_target_pct"),
+                "Profit target %",
+                default=settings["profit_target_pct"],
+                minimum=0.0,
+            )
+            settings["max_loss_pct"] = _coerce_float(
+                request.form.get("max_loss_pct"),
+                "Max loss %",
+                default=settings["max_loss_pct"],
+                minimum=0.0,
+            )
+            settings["dte_exit"] = _coerce_int(
+                request.form.get("dte_exit"),
+                "DTE exit",
+                default=settings["dte_exit"],
+                minimum=0,
+            )
+            settings["nova_judgment"] = request.form.get("nova_judgment") == "on"
+            settings["polling_minutes"] = _coerce_int(
+                request.form.get("polling_minutes"),
+                "Polling minutes",
+                default=settings["polling_minutes"],
+                minimum=1,
+            )
+            requested_model = request.form.get("nova_model", settings["nova_model"])
+            if requested_model in _nova_model_options(settings["nova_model"]):
+                settings["nova_model"] = requested_model
+            settings["nova_role"] = request.form.get("nova_role", settings.get("nova_role", "")).strip()
+            settings["monitor_market_hours_only"] = request.form.get("monitor_market_hours_only") == "on"
+            settings["monitor_weekdays_only"] = request.form.get("monitor_weekdays_only") == "on"
+            settings["market_open_time"] = request.form.get("market_open_time", settings["market_open_time"]).strip()
+            settings["market_close_time"] = request.form.get("market_close_time", settings["market_close_time"]).strip()
+            settings["market_holidays"] = request.form.get("market_holidays", settings.get("market_holidays", "")).strip()
+            settings["movers_lookback_days"] = _coerce_int(
+                request.form.get("movers_lookback_days"),
+                "Movers lookback days",
+                default=settings.get("movers_lookback_days", 5),
+                minimum=1,
+            )
+            settings["movers_count"] = _coerce_int(
+                request.form.get("movers_count"),
+                "Movers count",
+                default=settings.get("movers_count", 10),
+                minimum=1,
+            )
+            settings["movers_include_positions"] = request.form.get("movers_include_positions") == "on"
+            settings["movers_universe"] = request.form.get("movers_universe", settings.get("movers_universe", "")).strip()
+            settings["movers_use_sp500"] = request.form.get("movers_use_sp500") == "on"
+            settings["movers_max_seconds"] = _coerce_int(
+                request.form.get("movers_max_seconds"),
+                "Movers max seconds",
+                default=settings.get("movers_max_seconds", 20),
+                minimum=5,
+            )
+            save_settings(settings)
+            return redirect(url_for("alerts"))
+        except InputError as exc:
+            error = str(exc)
     try:
         with _ALERTS_LOCK:
             rows = ALERTS or load_alerts()
@@ -3112,42 +3244,50 @@ def watchlist():
             return redirect(url_for("watchlist"))
 
         if action == "scan":
-            strategy = request.form.get("strategy", "bull_put")
-            width = float(request.form.get("width", 2.5))
-            min_pop = float(request.form.get("min_pop", 80))
-            contracts = int(request.form.get("contracts", 1))
-            raw_mode = request.form.get("raw", "") == "1"
-            cash_balance = int(request.form.get("cash", 2000))
-            max_loss = float(request.form.get("max_loss", get_max_loss_threshold(cash_balance)))
-            expiry = request.form.get("expiry", "").strip()
+            try:
+                strategy = request.form.get("strategy", "bull_put")
+                width = _coerce_float(request.form.get("width"), "Width", default=2.5, minimum=0.01)
+                min_pop = _coerce_float(request.form.get("min_pop"), "Min POP", default=80.0, minimum=0.0, maximum=100.0)
+                contracts = _coerce_int(request.form.get("contracts"), "Contracts", default=1, minimum=1)
+                raw_mode = request.form.get("raw", "") == "1"
+                cash_balance = _coerce_int(request.form.get("cash"), "Cash balance", default=2000, minimum=0)
+                max_loss = _coerce_float(
+                    request.form.get("max_loss"),
+                    "Max loss",
+                    default=float(get_max_loss_threshold(cash_balance)),
+                    minimum=0.0,
+                )
+                expiry = request.form.get("expiry", "").strip()
 
-            for sym in watchlist_symbols:
-                try:
-                    if expiry:
-                        use_expiry = expiry
-                    else:
-                        _, _, _, expirations = get_chain_data(sym)
-                        use_expiry = expirations[0]["date"] if expirations else ""
-                    results_df, spot_price, _ = run_scan(
-                        sym, use_expiry, strategy, width, max_loss, min_pop, raw_mode, contracts
-                    )
-                    summary = summarize_scan(results_df)
-                    results.append({
-                        "symbol": sym,
-                        "expiry": use_expiry,
-                        "spot": spot_price,
-                        "count": summary["count"],
-                        "top": summary["top"],
-                    })
-                except Exception as exc:
-                    results.append({
-                        "symbol": sym,
-                        "expiry": expiry,
-                        "spot": None,
-                        "count": 0,
-                        "top": None,
-                        "error": str(exc),
-                    })
+                for sym in watchlist_symbols:
+                    try:
+                        if expiry:
+                            use_expiry = expiry
+                        else:
+                            _, _, _, expirations = get_chain_data(sym)
+                            use_expiry = expirations[0]["date"] if expirations else ""
+                        results_df, spot_price, _ = run_scan(
+                            sym, use_expiry, strategy, width, max_loss, min_pop, raw_mode, contracts
+                        )
+                        summary = summarize_scan(results_df)
+                        results.append({
+                            "symbol": sym,
+                            "expiry": use_expiry,
+                            "spot": spot_price,
+                            "count": summary["count"],
+                            "top": summary["top"],
+                        })
+                    except Exception as exc:
+                        results.append({
+                            "symbol": sym,
+                            "expiry": expiry,
+                            "spot": None,
+                            "count": 0,
+                            "top": None,
+                            "error": str(exc),
+                        })
+            except InputError as exc:
+                error = str(exc)
 
     return render_template(
         "watchlist.html",
@@ -3189,9 +3329,9 @@ def movers_agent():
                 if selected_universe_file not in universe_files:
                     raise RuntimeError(f"Unknown universe file: {selected_universe_file}")
                 universe = load_optionable_universe(selected_universe_file)
-                lookback_days = max(1, int(request.form.get("lookback_days", 5)))
-                top_n = max(1, int(request.form.get("top_n", 10)))
-                max_seconds = max(10, int(request.form.get("max_seconds", 25)))
+                lookback_days = _coerce_int(request.form.get("lookback_days"), "Lookback days", default=5, minimum=1)
+                top_n = _coerce_int(request.form.get("top_n"), "Top N", default=10, minimum=1)
+                max_seconds = _coerce_int(request.form.get("max_seconds"), "Max seconds", default=25, minimum=10)
                 strategy = _normalize_movers_strategy(request.form.get("strategy", strategy))
                 if not universe:
                     raise RuntimeError(f"No optionable universe loaded from {selected_universe_file}.")
@@ -3213,6 +3353,8 @@ def movers_agent():
                 total = int(snapshot.get("universe_size", 0))
                 label = "Bull Put" if strategy == "bull_put" else "Bear Call"
                 info = f"Weekly scan completed ({label}). Returned {rows_count} symbols. Coverage {covered}/{total}."
+            except InputError as exc:
+                error = str(exc)
             except Exception as exc:
                 error = str(exc)
         elif action == "clear_snapshot":
@@ -3266,11 +3408,10 @@ def tickets():
     accounts = []
     try:
         client = get_client()
-        response = client.get_accounts()
-        response.raise_for_status()
+        data = schwab_json(lambda: client.get_accounts(), "get_accounts_ticket_list")
         accounts = [
             entry.get("securitiesAccount", {}).get("accountNumber")
-            for entry in response.json()
+            for entry in data
         ]
     except Exception:
         pass
@@ -3341,47 +3482,49 @@ def tickets():
 
 @app.route("/tickets/create", methods=["POST"])
 def create_ticket():
-    symbol = request.form.get("symbol", "NVDA").upper().strip()
-    strategy = request.form.get("strategy", "bull_put")
-    width = float(request.form.get("width", 2.5))
-    min_pop = float(request.form.get("min_pop", 80))
-    contracts = int(request.form.get("contracts", 1))
-    raw_mode = request.form.get("raw", "") == "1"
-    cash_balance = int(request.form.get("cash", 2000))
-    max_loss = float(request.form.get("max_loss", get_max_loss_threshold(cash_balance)))
-    expiry = request.form.get("expiry", "")
-    selected_index = request.form.get("trade_index")
+    try:
+        params = _read_scan_params(request.form)
+    except InputError as exc:
+        global NOVA_OPTIONS_ERROR
+        NOVA_OPTIONS_ERROR = public_error_message(exc)
+        return redirect(url_for("options_chain"))
 
     try:
         results_df, _, _ = run_scan(
-            symbol, expiry, strategy, width, max_loss, min_pop, raw_mode, contracts
+            params["symbol"],
+            params["expiry"],
+            params["strategy"],
+            params["width"],
+            params["max_loss"],
+            params["min_pop"],
+            params["raw_mode"],
+            params["contracts"],
         )
         results_records = []
         if results_df is not None and not results_df.empty:
             results_records = results_df.to_dict(orient="records")
-        idx = int(selected_index) if selected_index is not None else None
+        idx = int(params["selected_index"]) if params["selected_index"] is not None else None
         trade = results_records[idx] if idx is not None and idx < len(results_records) else None
         if trade is None:
             raise RuntimeError("Select a trade row to create a ticket.")
-        ticket = build_ticket(symbol, strategy, expiry, trade)
+        ticket = build_ticket(params["symbol"], params["strategy"], params["expiry"], trade)
         tickets_data = load_tickets()
         tickets_data.insert(0, ticket)
         save_tickets(tickets_data)
     except Exception as exc:
-        global NOVA_OPTIONS_ERROR
-        NOVA_OPTIONS_ERROR = str(exc)
+        NOVA_OPTIONS_ERROR = _handle_route_error(exc, "route:create_ticket", service="Schwab", action="creating ticket from scan")
 
     return redirect(url_for(
         "options_chain",
-        symbol=symbol,
-        expiry=expiry,
-        strategy=strategy,
-        width=width,
-        min_pop=min_pop,
-        contracts=contracts,
-        cash=cash_balance,
-        max_loss=max_loss,
-        raw="1" if raw_mode else "",
+        symbol=params["symbol"],
+        expiry=params["expiry"],
+        strategy=params["strategy"],
+        width=params["width"],
+        min_pop=params["min_pop"],
+        contracts=params["contracts"],
+        cash=params["cash_balance"],
+        max_loss=params["max_loss"],
+        raw="1" if params["raw_mode"] else "",
     ))
 
 
@@ -3530,7 +3673,7 @@ def risk_dashboard():
         balances = fetch_account_balance_totals()
         summary = build_risk_summary(positions, cash_total=balances.get("cash", 0.0))
     except Exception as exc:
-        error = str(exc)
+        error = _handle_route_error(exc, "route:risk", service="Schwab", action="loading risk dashboard")
 
     return render_template("risk.html", summary=summary, balances=balances, error=error)
 
@@ -3538,8 +3681,13 @@ def risk_dashboard():
 @app.route("/options-open")
 def options_open():
     error = None
-    step = float(request.args.get("step", 1))
-    span = int(request.args.get("span", 5))
+    try:
+        step = _coerce_float(request.args.get("step"), "Step", default=1.0, minimum=0.01)
+        span = _coerce_int(request.args.get("span"), "Span", default=5, minimum=1)
+    except InputError as exc:
+        step = 1.0
+        span = 5
+        error = str(exc)
     pricing_mode = (request.args.get("mode", "model") or "model").strip().lower()
     if pricing_mode not in {"model", "expiry"}:
         pricing_mode = "model"
@@ -3566,7 +3714,7 @@ def options_open():
             option_positions, quotes, underlying_quotes, step, span, pricing_mode=pricing_mode
         )
     except Exception as exc:
-        error = str(exc)
+        error = _handle_route_error(exc, "route:options_open", service="Schwab", action="loading open options")
 
     return render_template(
         "options_open.html",
@@ -3584,12 +3732,16 @@ def spread_sim():
     error = (request.args.get("error") or "").strip() or None
     info = (request.args.get("info") or "").strip()
     load_warning = (request.args.get("load_warning") or "").strip() or None
+    try:
+        sim_params = _read_spread_sim_params(request.values)
+    except InputError as exc:
+        sim_params = _read_spread_sim_params({})
+        if not error:
+            error = str(exc)
     val = request.values.get
-    symbol = (val("symbol") or "SNDK").strip().upper() or "SNDK"
+    symbol = sim_params["symbol"]
     today = dt.date.today()
-    spread_type = (val("spread_type") or "bull_put").strip().lower()
-    if spread_type not in {"bull_put", "bear_call"}:
-        spread_type = "bull_put"
+    spread_type = sim_params["spread_type"]
 
     raw_stock_price = val("stock_price")
     raw_short_strike = val("short_strike")
@@ -3603,23 +3755,19 @@ def spread_sim():
     raw_iv_long = val("iv_long")
     raw_rate = val("rate")
     raw_price_step = val("price_step")
-    stock_price = _safe_float(raw_stock_price)
-    short_strike = _safe_float(raw_short_strike)
-    long_strike = _safe_float(raw_long_strike)
-    credit = _safe_float(raw_credit)
-    fill_mode = (raw_fill_mode or "mid").strip().lower()
-    if fill_mode not in {"mid", "natural"}:
-        fill_mode = "mid"
-    preset = (val("preset") or "custom").strip().lower()
-    if preset not in SPREAD_SIM_PRESETS:
-        preset = "custom"
-    slippage = _safe_float(raw_slippage)
-    contracts = int(_safe_float(raw_contracts) or 1)
-    dte = int(_safe_float(raw_dte) or 7)
-    iv_short = _safe_float(raw_iv_short)
-    iv_long = _safe_float(raw_iv_long)
-    rate = _safe_float(raw_rate)
-    price_step = _safe_float(raw_price_step)
+    stock_price = sim_params["stock_price"]
+    short_strike = sim_params["short_strike"]
+    long_strike = sim_params["long_strike"]
+    credit = sim_params["credit"]
+    fill_mode = sim_params["fill_mode"]
+    preset = sim_params["preset"]
+    slippage = sim_params["slippage"]
+    contracts = sim_params["contracts"]
+    dte = sim_params["dte"]
+    iv_short = sim_params["iv_short"]
+    iv_long = sim_params["iv_long"]
+    rate = sim_params["rate"]
+    price_step = sim_params["price_step"]
 
     short_default = 582.5 if spread_type == "bull_put" else 602.5
     long_default = 580.0 if spread_type == "bull_put" else 605.0
@@ -3680,8 +3828,8 @@ def spread_sim():
     entry_credit = quoted_credit if fill_mode == "mid" else max(quoted_credit - slippage, 0.0)
 
     price_from_default, price_to_default = _spread_sim_price_bounds(stock_price, short_strike, long_strike, preset)
-    price_from = _safe_float(request.args.get("price_from"))
-    price_to = _safe_float(request.args.get("price_to"))
+    price_from = sim_params["price_from"]
+    price_to = sim_params["price_to"]
     price_from = price_from if price_from is not None else price_from_default
     price_to = price_to if price_to is not None else price_to_default
     if price_from < price_to:
@@ -4155,27 +4303,26 @@ def spread_sim():
 @app.route("/chart")
 def spread_chart():
     error = None
-    symbol = (request.args.get("symbol") or "SNDK").strip().upper() or "SNDK"
-    spread_type = (request.args.get("spread_type") or "bull_put").strip().lower()
-    if spread_type not in {"bull_put", "bear_call"}:
-        spread_type = "bull_put"
-    preset = (request.args.get("preset") or "custom").strip().lower()
-    if preset not in SPREAD_SIM_PRESETS:
-        preset = "custom"
-    fill_mode = (request.args.get("fill_mode") or "mid").strip().lower()
-    if fill_mode not in {"mid", "natural"}:
-        fill_mode = "mid"
+    try:
+        sim_params = _read_spread_sim_params(request.args)
+    except InputError as exc:
+        sim_params = _read_spread_sim_params({})
+        error = str(exc)
+    symbol = sim_params["symbol"]
+    spread_type = sim_params["spread_type"]
+    preset = sim_params["preset"]
+    fill_mode = sim_params["fill_mode"]
 
-    stock_price = _safe_float(request.args.get("stock_price"))
-    short_strike = _safe_float(request.args.get("short_strike"))
-    long_strike = _safe_float(request.args.get("long_strike"))
-    credit = _safe_float(request.args.get("credit"))
-    slippage = _safe_float(request.args.get("slippage"))
-    contracts = int(_safe_float(request.args.get("contracts")) or 1)
-    dte = int(_safe_float(request.args.get("dte")) or 7)
-    iv_short = _safe_float(request.args.get("iv_short"))
-    iv_long = _safe_float(request.args.get("iv_long"))
-    rate = _safe_float(request.args.get("rate"))
+    stock_price = sim_params["stock_price"]
+    short_strike = sim_params["short_strike"]
+    long_strike = sim_params["long_strike"]
+    credit = sim_params["credit"]
+    slippage = sim_params["slippage"]
+    contracts = sim_params["contracts"]
+    dte = sim_params["dte"]
+    iv_short = sim_params["iv_short"]
+    iv_long = sim_params["iv_long"]
+    rate = sim_params["rate"]
     period = (request.args.get("period") or "6m").strip().lower()
 
     short_default = 582.5 if spread_type == "bull_put" else 602.5
@@ -4268,7 +4415,7 @@ def spread_chart():
                             f"(${stock_price:,.2f}). Check symbol, timeframe, or chart data."
                         )
         except Exception as exc:
-            error = str(exc)
+            error = _handle_route_error(exc, "route:spread_chart:history", service="Schwab", action="loading chart history")
     if not error:
         try:
             live_quote = fetch_quotes([symbol]).get(symbol, {})
@@ -4371,11 +4518,19 @@ def summary():
     period = request.args.get("period", "month")
     status_filter = request.args.get("status", "all")
     sort_by = request.args.get("sort", "profit")
+    if period not in {"week", "month", "quarter", "year"}:
+        period = "month"
+    if status_filter not in {"all", "open", "closed"}:
+        status_filter = "all"
+    if sort_by not in {"profit", "loss", "symbol"}:
+        sort_by = "profit"
     selected_year_raw = (request.args.get("year") or "").strip()
     selected_month_raw = (request.args.get("month") or "").strip()
     tz = request.args.get("tz")
     selected_year = int(selected_year_raw) if selected_year_raw.isdigit() else None
     selected_month = int(selected_month_raw) if selected_month_raw.isdigit() else None
+    if selected_month is not None and not (1 <= selected_month <= 12):
+        selected_month = None
     error = None
     rows = []
     year_options = []
@@ -4464,7 +4619,7 @@ def summary():
         other_totals = _section_totals(other_rows)
         combined_totals = _section_totals([r for r in rows if r.get("assetType") != "CASH"])
     except Exception as exc:
-        error = str(exc)
+        error = _handle_route_error(exc, "route:summary", service="Schwab", action="building summary")
 
     return render_template(
         "summary.html",
@@ -4526,6 +4681,10 @@ def export_tickets():
 def export_summary():
     period = request.args.get("period", "month")
     status_filter = request.args.get("status", "all")
+    if period not in {"week", "month", "quarter", "year"}:
+        period = "month"
+    if status_filter not in {"all", "open", "closed"}:
+        status_filter = "all"
     tz_name = load_settings().get("timezone", "America/New_York")
     rows = build_yearly_summary(period, status_filter, tz_name=tz_name)
     headers = ["period", "symbol", "status", "assetType", "qty", "profit", "loss", "pnl"]
@@ -4549,8 +4708,7 @@ def tools():
     token_status = get_token_status()
     if request.args.get("clear_errors") == "1":
         save_monitor_state(state)
-        with open(ERROR_LOG_PATH, "w", encoding="utf-8") as f:
-            json.dump([], f, indent=2)
+        _save_json_file(ERROR_LOG_PATH, [])
         errors = []
     if request.args.get("show_token_b64") == "1":
         try:
@@ -4589,16 +4747,16 @@ def tools():
     if request.args.get("check_schwab") == "1":
         try:
             client = get_client()
-            response = schwab_request(lambda: client.get_account_numbers(), "status_check")
+            response = schwab_response(lambda: client.get_account_numbers(), "status_check")
             status = {"ok": True, "status_code": response.status_code}
         except Exception as exc:
-            status = {"ok": False, "error": str(exc)}
+            status = {"ok": False, "error": _handle_route_error(exc, "route:tools:check_schwab", service="Schwab", action="checking Schwab status")}
     if request.args.get("send_test_email") == "1":
         try:
             send_test_email_alert()
             email_test_result = {"ok": True}
         except Exception as exc:
-            email_test_result = {"ok": False, "error": str(exc)}
+            email_test_result = {"ok": False, "error": _handle_route_error(exc, "route:tools:send_test_email", action="sending test email")}
 
     tzinfo = ZoneInfo(settings.get("timezone", "UTC"))
     now = dt.datetime.now(tzinfo)
@@ -4755,7 +4913,7 @@ def debug_txn_reconcile():
 
         rows.sort(key=lambda r: (r["date"], r["symbol"], str(r.get("instruction") or ""), str(r.get("transactionId") or "")))
     except Exception as exc:
-        error = str(exc)
+        error = _handle_route_error(exc, "route:debug_txn_reconcile", service="Schwab", action="loading transactions")
 
     by_symbol_rows = [{"symbol": sym, "pnl": pnl} for sym, pnl in sorted(by_symbol.items(), key=lambda kv: kv[0])]
     return render_template(
@@ -4858,7 +5016,7 @@ def nova_chat():
                 NOVA_CHAT.append({"role": "assistant", "content": reply})
                 NOVA_ERROR = None
             except Exception as exc:
-                NOVA_ERROR = str(exc)
+                NOVA_ERROR = _handle_route_error(exc, "route:nova_chat", service="OpenAI", action="generating Nova response")
         return redirect(url_for("nova_chat"))
 
     error = NOVA_ERROR
@@ -4871,37 +5029,31 @@ def nova_options():
     settings = load_settings()
     global NOVA_ERROR, NOVA_OPTIONS_RESPONSE, NOVA_OPTIONS_ERROR
     action = request.form.get("action", "")
-    symbol = request.form.get("symbol", "NVDA").upper().strip()
-    strategy = request.form.get("strategy", "bull_put")
-    width = float(request.form.get("width", 2.5))
-    min_pop = float(request.form.get("min_pop", 80))
-    contracts = int(request.form.get("contracts", 1))
-    raw_mode = request.form.get("raw", "") == "1"
-    pricing_mode = request.form.get("pricing_mode", "mid").strip().lower()
-    if pricing_mode not in {"mid", "natural", "custom"}:
-        pricing_mode = "mid"
-    custom_limit_raw = request.form.get("custom_limit", "").strip()
-    custom_limit = None
-    if custom_limit_raw:
-        try:
-            custom_limit = float(custom_limit_raw)
-        except ValueError:
-            custom_limit = None
-    cash_balance = int(request.form.get("cash", 2000))
-    max_loss = float(request.form.get("max_loss", get_max_loss_threshold(cash_balance)))
-    expiry = request.form.get("expiry", "")
-    selected_index = request.form.get("trade_index")
+    try:
+        params = _read_scan_params(request.form)
+    except InputError as exc:
+        NOVA_ERROR = public_error_message(exc)
+        NOVA_OPTIONS_ERROR = public_error_message(exc)
+        return redirect(url_for("options_chain"))
 
     try:
         results_df, spot_price, expirations = run_scan(
-            symbol, expiry, strategy, width, max_loss, min_pop, raw_mode, contracts,
-            pricing_mode=pricing_mode, custom_limit=custom_limit
+            params["symbol"],
+            params["expiry"],
+            params["strategy"],
+            params["width"],
+            params["max_loss"],
+            params["min_pop"],
+            params["raw_mode"],
+            params["contracts"],
+            pricing_mode=params["pricing_mode"],
+            custom_limit=params["custom_limit"],
         )
         results_records = []
         if results_df is not None and not results_df.empty:
             results_records = results_df.to_dict(orient="records")
 
-        research = get_research_summary(symbol)
+        research = get_research_summary(params["symbol"])
         market_research = get_market_research()
 
         if action == "suggest_filters":
@@ -4913,9 +5065,9 @@ def nova_options():
                 "contracts, max_loss, raw_mode. Use one of the provided expiries."
             )
             context = (
-                f"Symbol: {symbol}, spot: {spot_price}, expiries: {exp_list}, "
-                f"current: strategy={strategy}, width={width}, min_pop={min_pop}, "
-                f"contracts={contracts}, max_loss={max_loss}, cash_balance={cash_balance}. "
+                f"Symbol: {params['symbol']}, spot: {spot_price}, expiries: {exp_list}, "
+                f"current: strategy={params['strategy']}, width={params['width']}, min_pop={params['min_pop']}, "
+                f"contracts={params['contracts']}, max_loss={params['max_loss']}, cash_balance={params['cash_balance']}. "
                 f"Research: {research}. Market: {market_research}."
             )
             response = client.chat.completions.create(
@@ -4932,32 +5084,32 @@ def nova_options():
             NOVA_OPTIONS_ERROR = None
             try:
                 data = json.loads(reply)
-                expiry = data.get("expiry", expiry)
-                strategy = data.get("strategy", strategy)
-                width = float(data.get("width", width))
-                min_pop = float(data.get("min_pop", min_pop))
-                contracts = int(data.get("contracts", contracts))
-                max_loss = float(data.get("max_loss", max_loss))
-                raw_mode = bool(data.get("raw_mode", raw_mode))
+                params["expiry"] = data.get("expiry", params["expiry"])
+                params["strategy"] = data.get("strategy", params["strategy"])
+                params["width"] = float(data.get("width", params["width"]))
+                params["min_pop"] = float(data.get("min_pop", params["min_pop"]))
+                params["contracts"] = int(data.get("contracts", params["contracts"]))
+                params["max_loss"] = float(data.get("max_loss", params["max_loss"]))
+                params["raw_mode"] = bool(data.get("raw_mode", params["raw_mode"]))
             except Exception:
                 pass
             return redirect(url_for(
                 "options_chain",
-                symbol=symbol,
-                expiry=expiry,
-                strategy=strategy,
-                width=width,
-                min_pop=min_pop,
-                contracts=contracts,
-                cash=cash_balance,
-                max_loss=max_loss,
-                pricing_mode=pricing_mode,
-                custom_limit=custom_limit if custom_limit is not None else "",
-                raw="1" if raw_mode else "",
+                symbol=params["symbol"],
+                expiry=params["expiry"],
+                strategy=params["strategy"],
+                width=params["width"],
+                min_pop=params["min_pop"],
+                contracts=params["contracts"],
+                cash=params["cash_balance"],
+                max_loss=params["max_loss"],
+                pricing_mode=params["pricing_mode"],
+                custom_limit=params["custom_limit"] if params["custom_limit"] is not None else "",
+                raw="1" if params["raw_mode"] else "",
             ))
 
         if action == "explain_trade":
-            idx = int(selected_index) if selected_index is not None else None
+            idx = int(params["selected_index"]) if params["selected_index"] is not None else None
             trade = results_records[idx] if idx is not None and idx < len(results_records) else None
             if trade is None:
                 raise RuntimeError("Select a trade row to explain.")
@@ -4975,8 +5127,8 @@ def nova_options():
                 f"pop={trade.get('POP %')}"
             )
             context = (
-                f"Symbol: {symbol}, spot: {spot_price}, cash_balance={cash_balance}, trade: {trade}. "
-                f"{trade_facts}. pricing_mode={pricing_mode}, custom_limit={custom_limit}. "
+                f"Symbol: {params['symbol']}, spot: {spot_price}, cash_balance={params['cash_balance']}, trade: {trade}. "
+                f"{trade_facts}. pricing_mode={params['pricing_mode']}, custom_limit={params['custom_limit']}. "
                 f"Research: {research}. Market: {market_research}."
             )
         else:
@@ -4984,7 +5136,7 @@ def nova_options():
                 "Analyze the current scan results and summarize the best opportunities. "
                 "Use the user's rules and call out any trades that violate them."
             )
-            context = f"Symbol: {symbol}, spot: {spot_price}, cash_balance={cash_balance}, results: {results_records[:10]}. Research: {research}. Market: {market_research}."
+            context = f"Symbol: {params['symbol']}, spot: {spot_price}, cash_balance={params['cash_balance']}, results: {results_records[:10]}. Research: {research}. Market: {market_research}."
 
         client = get_openai_client()
         response = client.chat.completions.create(
@@ -5000,22 +5152,23 @@ def nova_options():
         NOVA_OPTIONS_RESPONSE = reply
         NOVA_OPTIONS_ERROR = None
     except Exception as exc:
-        NOVA_ERROR = str(exc)
-        NOVA_OPTIONS_ERROR = str(exc)
+        message = _handle_route_error(exc, "route:nova_options", service="OpenAI", action="running Nova options analysis")
+        NOVA_ERROR = message
+        NOVA_OPTIONS_ERROR = message
 
     return redirect(url_for(
         "options_chain",
-        symbol=symbol,
-        expiry=expiry,
-        strategy=strategy,
-        width=width,
-        min_pop=min_pop,
-        contracts=contracts,
-        cash=cash_balance,
-        max_loss=max_loss,
-        pricing_mode=pricing_mode,
-        custom_limit=custom_limit if custom_limit is not None else "",
-        raw="1" if raw_mode else "",
+        symbol=params["symbol"],
+        expiry=params["expiry"],
+        strategy=params["strategy"],
+        width=params["width"],
+        min_pop=params["min_pop"],
+        contracts=params["contracts"],
+        cash=params["cash_balance"],
+        max_loss=params["max_loss"],
+        pricing_mode=params["pricing_mode"],
+        custom_limit=params["custom_limit"] if params["custom_limit"] is not None else "",
+        raw="1" if params["raw_mode"] else "",
     ))
 
 
@@ -5024,60 +5177,53 @@ def nova_options_clear():
     global NOVA_OPTIONS_RESPONSE, NOVA_OPTIONS_ERROR
     NOVA_OPTIONS_RESPONSE = None
     NOVA_OPTIONS_ERROR = None
-    symbol = request.form.get("symbol", "NVDA").upper().strip()
-    strategy = request.form.get("strategy", "bull_put")
-    width = float(request.form.get("width", 2.5))
-    min_pop = float(request.form.get("min_pop", 80))
-    contracts = int(request.form.get("contracts", 1))
-    raw_mode = request.form.get("raw", "") == "1"
-    pricing_mode = request.form.get("pricing_mode", "mid").strip().lower()
-    if pricing_mode not in {"mid", "natural", "custom"}:
-        pricing_mode = "mid"
-    custom_limit_raw = request.form.get("custom_limit", "").strip()
-    cash_balance = int(request.form.get("cash", 2000))
-    max_loss = float(request.form.get("max_loss", get_max_loss_threshold(cash_balance)))
-    expiry = request.form.get("expiry", "")
+    try:
+        params = _read_scan_params(request.form)
+    except InputError:
+        return redirect(url_for("options_chain"))
     return redirect(url_for(
         "options_chain",
-        symbol=symbol,
-        expiry=expiry,
-        strategy=strategy,
-        width=width,
-        min_pop=min_pop,
-        contracts=contracts,
-        cash=cash_balance,
-        max_loss=max_loss,
-        pricing_mode=pricing_mode,
-        custom_limit=custom_limit_raw,
-        raw="1" if raw_mode else "",
+        symbol=params["symbol"],
+        expiry=params["expiry"],
+        strategy=params["strategy"],
+        width=params["width"],
+        min_pop=params["min_pop"],
+        contracts=params["contracts"],
+        cash=params["cash_balance"],
+        max_loss=params["max_loss"],
+        pricing_mode=params["pricing_mode"],
+        custom_limit=params["custom_limit_raw"],
+        raw="1" if params["raw_mode"] else "",
     ))
 
 @app.route("/options")
 def options_chain():
-    symbol = request.args.get("symbol", "NVDA").upper().strip()
-    strategy = request.args.get("strategy", "bull_put")
-    width = float(request.args.get("width", 2.5))
-    min_pop = float(request.args.get("min_pop", 80))
-    contracts = int(request.args.get("contracts", 1))
-    raw_mode = request.args.get("raw", "") == "1"
-    pricing_mode = request.args.get("pricing_mode", "mid").strip().lower()
-    if pricing_mode not in {"mid", "natural", "custom"}:
-        pricing_mode = "mid"
-    custom_limit_raw = request.args.get("custom_limit", "").strip()
-    custom_limit = None
-    if custom_limit_raw:
-        try:
-            custom_limit = float(custom_limit_raw)
-        except ValueError:
-            custom_limit = None
-    cash_balance = int(request.args.get("cash", 2000))
-    max_loss = float(request.args.get("max_loss", get_max_loss_threshold(cash_balance)))
-    expiry = request.args.get("expiry", "")
-    auto_refresh = int(request.args.get("auto", 0))
+    try:
+        params = _read_scan_params(request.args)
+        auto_refresh = _coerce_int(request.args.get("auto"), "Auto refresh", default=0, minimum=0)
+    except InputError as exc:
+        params = {
+            "symbol": "NVDA",
+            "strategy": "bull_put",
+            "width": 2.5,
+            "min_pop": 80.0,
+            "contracts": 1,
+            "raw_mode": False,
+            "pricing_mode": "mid",
+            "custom_limit_raw": "",
+            "custom_limit": None,
+            "cash_balance": 2000,
+            "max_loss": float(get_max_loss_threshold(2000)),
+            "expiry": "",
+            "selected_index": None,
+        }
+        auto_refresh = 0
+        errors = [str(exc)]
+    else:
+        errors = []
 
     results_columns = []
     results_rows = []
-    errors = []
     spot_price = None
     meta = {}
     research = {}
@@ -5086,25 +5232,33 @@ def options_chain():
 
     try:
         results_df, spot_price, expirations = run_scan(
-            symbol, expiry, strategy, width, max_loss, min_pop, raw_mode, contracts,
-            pricing_mode=pricing_mode, custom_limit=custom_limit
+            params["symbol"],
+            params["expiry"],
+            params["strategy"],
+            params["width"],
+            params["max_loss"],
+            params["min_pop"],
+            params["raw_mode"],
+            params["contracts"],
+            pricing_mode=params["pricing_mode"],
+            custom_limit=params["custom_limit"],
         )
         if results_df is not None:
             results_columns, results_rows = format_results(results_df)
             raw_rows = results_df.to_dict(orient="records")
             for idx, row in enumerate(results_rows):
                 raw_row = raw_rows[idx] if idx < len(raw_rows) else {}
-                row["_spread_sim_url"] = build_spread_sim_link(symbol, strategy, pricing_mode, raw_row)
+                row["_spread_sim_url"] = build_spread_sim_link(params["symbol"], params["strategy"], params["pricing_mode"], raw_row)
             meta = {
-                "symbol": symbol,
-                "expiry": expiry,
+                "symbol": params["symbol"],
+                "expiry": params["expiry"],
                 "spot": spot_price,
-                "strategy": strategy,
+                "strategy": params["strategy"],
             }
-        research = get_research_summary(symbol)
+        research = get_research_summary(params["symbol"])
         market_research = get_market_research()
     except Exception as exc:
-        errors.append(str(exc))
+        errors.append(_handle_route_error(exc, "route:options_chain", service="Schwab", action="loading options scan"))
 
     global NOVA_OPTIONS_RESPONSE, NOVA_OPTIONS_ERROR
     nova_response = NOVA_OPTIONS_RESPONSE
@@ -5114,17 +5268,17 @@ def options_chain():
 
     return render_template(
         "options.html",
-        symbol=symbol,
-        strategy=strategy,
-        width=width,
-        min_pop=min_pop,
-        contracts=contracts,
-        raw_mode=raw_mode,
-        pricing_mode=pricing_mode,
-        custom_limit=custom_limit_raw,
-        cash_balance=cash_balance,
-        max_loss=max_loss,
-        expiry=expiry,
+        symbol=params["symbol"],
+        strategy=params["strategy"],
+        width=params["width"],
+        min_pop=params["min_pop"],
+        contracts=params["contracts"],
+        raw_mode=params["raw_mode"],
+        pricing_mode=params["pricing_mode"],
+        custom_limit=params["custom_limit_raw"],
+        cash_balance=params["cash_balance"],
+        max_loss=params["max_loss"],
+        expiry=params["expiry"],
         expirations=expirations,
         results_columns=results_columns,
         results_rows=results_rows,
