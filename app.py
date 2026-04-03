@@ -5268,10 +5268,19 @@ def options_chain():
                 "spot": spot_price,
                 "strategy": params["strategy"],
             }
-        research = get_research_summary(params["symbol"])
-        market_research = get_market_research()
     except Exception as exc:
         errors.append(_handle_route_error(exc, "route:options_chain", service="Schwab", action="loading options scan"))
+
+    try:
+        research = get_research_summary(params["symbol"])
+    except Exception as exc:
+        research = {"symbol": params["symbol"], "error": _handle_route_error(exc, "route:options_chain:research", service="Schwab", action="loading symbol research")}
+
+    try:
+        market_research = get_market_research()
+    except Exception as exc:
+        market_research = []
+        errors.append(_handle_route_error(exc, "route:options_chain:market_research", service="Schwab", action="loading market research"))
 
     global NOVA_OPTIONS_RESPONSE, NOVA_OPTIONS_ERROR
     nova_response = NOVA_OPTIONS_RESPONSE
