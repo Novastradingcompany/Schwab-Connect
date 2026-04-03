@@ -8,11 +8,75 @@
     <div class="pill">Model: {{ settings.nova_model }}</div>
   </section>
 
+  <section class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Conversation Size</div>
+      <div class="stat-value">{{ messages|length }}</div>
+      <div class="stat-note">Stored chat turns in the current in-memory Nova session.</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Movers Lookback</div>
+      <div class="stat-value">{{ settings.movers_lookback_days }} days</div>
+      <div class="stat-note">Used when you trigger the movers scan from this page.</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Movers Target</div>
+      <div class="stat-value">{{ settings.movers_count }}</div>
+      <div class="stat-note">Symbols Nova aims to surface from the scan workflow.</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Current Mode</div>
+      <div class="stat-value">{{ settings.nova_judgment|replace("_", " ")|title }}</div>
+      <div class="stat-note">Judgment style currently loaded from settings.</div>
+    </div>
+  </section>
+
+  <nav class="section-jump-nav">
+    <a class="section-jump-link" href="#nova-chat-log">Chat Log</a>
+    <a class="section-jump-link" href="#nova-actions">Quick Actions</a>
+    <a class="section-jump-link" href="#nova-compose">Compose</a>
+  </nav>
+
   {% if error %}
     <div class="card alert">{{ error }}</div>
   {% endif %}
 
-  <section class="card chat-window">
+  <section class="card" id="nova-actions">
+    <div class="card-title">Quick Actions</div>
+    <p class="form-section-note">Use the scan button when you want a fresh list of candidates. Use the message box for position reviews, rule checks, and follow-up questions.</p>
+    <div class="workflow-strip">
+      <div class="workflow-step">
+        <div class="workflow-step-label">1. Scan</div>
+        <div class="workflow-step-note">Pull the current movers universe and ask Nova for symbols worth exploring.</div>
+      </div>
+      <div class="workflow-step">
+        <div class="workflow-step-label">2. Ask</div>
+        <div class="workflow-step-note">Send a direct question about entries, risk, exits, or portfolio context.</div>
+      </div>
+      <div class="workflow-step">
+        <div class="workflow-step-label">3. Refine</div>
+        <div class="workflow-step-note">Use follow-up prompts to narrow symbol choice, timeframe, or trade structure.</div>
+      </div>
+    </div>
+    <form class="form" method="post">
+      <input type="hidden" name="action" value="movers">
+      <div class="form-actions">
+        <button class="button" type="submit">Find Movers</button>
+      </div>
+      <div class="results-callout">
+        This scan uses watchlist, current positions, and your configured universe over the last {{ settings.movers_lookback_days }} trading days.
+      </div>
+    </form>
+  </section>
+
+  <section class="card" id="nova-chat-log">
+    <div class="table-toolbar">
+      <div class="table-toolbar-title">Chat Log</div>
+      <div class="table-toolbar-note">
+        {{ messages|length }} message{{ "" if messages|length == 1 else "s" }} in the current session
+      </div>
+    </div>
+    <div class="chat-window">
     {% for msg in messages %}
       <div class="chat-row {{ msg.role }}">
         <div class="chat-bubble">
@@ -21,28 +85,24 @@
         </div>
       </div>
     {% else %}
-      <div>No messages yet.</div>
+      <div class="chat-empty-state">
+        <div class="chat-empty-title">No messages yet.</div>
+        <div class="chat-empty-note">Start with a movers scan or ask Nova about a symbol, position, or exit plan.</div>
+      </div>
     {% endfor %}
+    </div>
   </section>
 
-  <form class="card form" method="post">
-    <input type="hidden" name="action" value="movers">
-    <div class="form-actions">
-      <button class="button" type="submit">Find Movers</button>
-    </div>
-    <p class="subtitle">
-      Scans watchlist + positions + custom universe over the last {{ settings.movers_lookback_days }} trading days.
-    </p>
-  </form>
-
-  <form class="card form" method="post">
+  <form class="card form" method="post" id="nova-compose">
+    <div class="card-title">Compose Prompt</div>
+    <p class="form-section-note">Keep prompts direct. Nova already has your rules, alert context, and a snapshot of current positions.</p>
     <label>
       Message
       <textarea name="message" rows="3" placeholder="Type your message to Nova"></textarea>
     </label>
     <div class="form-actions">
       <button class="button" type="submit">Send</button>
-      <button class="button" type="submit" name="action" value="clear">Clear Chat</button>
+      <button class="button button-muted" type="submit" name="action" value="clear">Clear Chat</button>
     </div>
   </form>
 {% endblock %}

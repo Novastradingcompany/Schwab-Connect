@@ -560,6 +560,7 @@ textarea {
   flex-direction: column;
   gap: 12px;
   min-height: 220px;
+  margin-top: 14px;
 }
 
 .chat-row.user {
@@ -578,10 +579,29 @@ textarea {
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.85);
   border: 1px solid rgba(0, 0, 0, 0.08);
+  line-height: 1.55;
+  white-space: pre-wrap;
 }
 
 .chat-row.user .chat-bubble {
   background: rgba(197, 93, 61, 0.12);
+}
+
+.chat-empty-state {
+  padding: 20px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px dashed rgba(0, 0, 0, 0.12);
+}
+
+.chat-empty-title {
+  font-weight: 700;
+}
+
+.chat-empty-note {
+  margin-top: 6px;
+  color: var(--ink-soft);
+  line-height: 1.45;
 }
 
 .watchlist-chips {
