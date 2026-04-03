@@ -1409,6 +1409,13 @@ def email_settings():
 
 
 def clean_chain(df: pd.DataFrame) -> pd.DataFrame:
+    required_cols = {"bid", "ask", "strike"}
+    if df is None or df.empty:
+        return pd.DataFrame(columns=sorted(required_cols | {"openInterest"}))
+    missing = [col for col in required_cols if col not in df.columns]
+    if missing:
+        logging.warning("Option chain missing required columns: %s", ", ".join(sorted(missing)))
+        return pd.DataFrame(columns=sorted(set(df.columns) | required_cols | {"openInterest"}))
     df = df.copy()
     df = df[(df["bid"] >= 0.01) & (df["ask"] >= 0.01)]
     df = df[df["ask"] >= df["bid"]]
