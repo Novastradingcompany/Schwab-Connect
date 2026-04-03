@@ -1953,9 +1953,21 @@ def inject_schwab_status():
 
 def get_chain_data(symbol):
     chain = fetch_option_chain(symbol)
-    spot_price = chain.get("underlyingPrice") or chain.get("underlying", {}).get("last")
-    if spot_price is not None:
-        spot_price = float(spot_price)
+    spot_price = None
+    try:
+        live_quote = fetch_quotes([symbol]).get(symbol, {})
+        spot_price = _safe_float(
+            live_quote.get("last")
+            or live_quote.get("mark")
+            or live_quote.get("bid")
+            or live_quote.get("ask")
+        )
+    except Exception:
+        spot_price = None
+    if spot_price is None:
+        spot_price = chain.get("underlyingPrice") or chain.get("underlying", {}).get("last")
+        if spot_price is not None:
+            spot_price = float(spot_price)
     call_map = flatten_option_map(chain.get("callExpDateMap", {}))
     put_map = flatten_option_map(chain.get("putExpDateMap", {}))
 
