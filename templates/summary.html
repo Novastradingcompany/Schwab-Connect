@@ -17,11 +17,47 @@
     <div class="pill">Year to date</div>
   </section>
 
+  <section class="stats-grid summary-overview-grid">
+    <div class="stat-card">
+      <div class="stat-label">Combined Net P/L</div>
+      <div class="stat-value {% if combined_totals.pnl > 0 %}pl-pos{% elif combined_totals.pnl < 0 %}pl-neg{% endif %}">{{ money(combined_totals.pnl) }}</div>
+      <div class="stat-note">All visible asset groups under the current filters.</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Stock / Option Net</div>
+      <div class="stat-value">{{ money(stock_totals.pnl) }} / {{ money(option_totals.pnl) }}</div>
+      <div class="stat-note">Fast read on directional versus premium performance.</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Cash / Other Net</div>
+      <div class="stat-value">{{ money(cash_totals.pnl) }} / {{ money(other_totals.pnl) }}</div>
+      <div class="stat-note">Cash drag and non-core assets in the same filter window.</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Visible Rows</div>
+      <div class="stat-value">{{ stock_rows|length + option_rows|length + cash_rows|length + other_rows|length }}</div>
+      <div class="stat-note">Rows currently rendered across all sections.</div>
+    </div>
+  </section>
+
+  <nav class="section-jump-nav">
+    <a class="section-jump-link" href="#summary-filters">Filters</a>
+    <a class="section-jump-link" href="#stocks-summary">Stocks</a>
+    <a class="section-jump-link" href="#options-summary">Options</a>
+    <a class="section-jump-link" href="#cash-summary">Cash</a>
+    {% if other_rows %}
+      <a class="section-jump-link" href="#other-summary">Other</a>
+    {% endif %}
+    <a class="section-jump-link" href="#combined-summary">Combined</a>
+  </nav>
+
   {% if error %}
     <div class="card alert">{{ error }}</div>
   {% endif %}
 
-  <form class="card form" method="get">
+  <form class="card form" method="get" id="summary-filters">
+    <div class="card-title">Summary Filters</div>
+    <p class="form-section-note">Adjust the period lens, then jump straight to the section that needs attention.</p>
     <div class="form-grid">
       <label>
         Period
@@ -72,7 +108,7 @@
     </div>
   </form>
 
-  <section class="card">
+  <section class="card" id="stocks-summary">
     <div class="card-title">Stocks</div>
     {% if status != "open" %}
       <p class="subtitle">
@@ -123,7 +159,7 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" id="options-summary">
     <div class="card-title">Options</div>
     <div class="table-wrap">
       <table>
@@ -164,7 +200,7 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="card" id="cash-summary">
     <div class="card-title">Cash</div>
     <div class="table-wrap">
       <table>
@@ -206,7 +242,7 @@
   </section>
 
   {% if other_rows %}
-    <section class="card">
+    <section class="card" id="other-summary">
       <div class="card-title">Other Assets</div>
       <div class="table-wrap">
         <table>
@@ -248,7 +284,7 @@
     </section>
   {% endif %}
 
-  <section class="card">
+  <section class="card" id="combined-summary">
     <div class="card-title">Combined Total</div>
     <div class="table-wrap">
       <table>
