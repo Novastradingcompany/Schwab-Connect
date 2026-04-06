@@ -229,6 +229,12 @@
           return margin.top + ((yMax - price) / (yMax - yMin)) * plotHeight;
         }
 
+        function priceScale(y) {
+          const clampedY = Math.max(margin.top, Math.min(margin.top + plotHeight, y));
+          const ratio = (clampedY - margin.top) / plotHeight;
+          return yMax - (ratio * (yMax - yMin));
+        }
+
         const background = createNode("rect", {
           x: margin.left,
           y: margin.top,
@@ -388,9 +394,22 @@
           "stroke-width": "2",
           hidden: "hidden"
         });
+        const focusPriceTag = createNode("g", {
+          hidden: "hidden"
+        });
+        const focusPriceBox = createNode("rect", {
+          rx: "8",
+          class: "spread-chart-cursor-box"
+        });
+        const focusPriceText = createNode("text", {
+          class: "spread-chart-cursor-label"
+        });
+        focusPriceTag.appendChild(focusPriceBox);
+        focusPriceTag.appendChild(focusPriceText);
         svg.appendChild(focusX);
         svg.appendChild(focusY);
         svg.appendChild(focusDot);
+        svg.appendChild(focusPriceTag);
 
         const hitbox = createNode("rect", {
           x: margin.left,
@@ -404,21 +423,37 @@
         function showPoint(index, event) {
           const point = points[index];
           const x = xScale(index);
-          const y = yScale(point.close);
+          const bounds = svg.getBoundingClientRect();
+          const localY = event.clientY - bounds.top;
+          const cursorY = Math.max(margin.top, Math.min(margin.top + plotHeight, localY));
+          const cursorPrice = priceScale(cursorY);
+          const pointY = yScale(point.close);
           focusX.setAttribute("x1", x);
           focusX.setAttribute("x2", x);
-          focusY.setAttribute("y1", y);
-          focusY.setAttribute("y2", y);
+          focusY.setAttribute("y1", cursorY);
+          focusY.setAttribute("y2", cursorY);
           focusDot.setAttribute("cx", x);
-          focusDot.setAttribute("cy", y);
+          focusDot.setAttribute("cy", pointY);
           focusX.removeAttribute("hidden");
           focusY.removeAttribute("hidden");
           focusDot.removeAttribute("hidden");
+          focusPriceText.textContent = "$" + cursorPrice.toFixed(2);
+          focusPriceText.setAttribute("x", width - margin.right + 12);
+          focusPriceText.setAttribute("y", cursorY + 4);
+          const priceTextBox = focusPriceText.getBBox();
+          focusPriceBox.setAttribute("x", priceTextBox.x - 8);
+          focusPriceBox.setAttribute("y", priceTextBox.y - 4);
+          focusPriceBox.setAttribute("width", priceTextBox.width + 16);
+          focusPriceBox.setAttribute("height", priceTextBox.height + 8);
+          focusPriceTag.removeAttribute("hidden");
           tooltip.hidden = false;
-          tooltip.innerHTML = "<strong>" + point.label + "</strong><br>$" + point.close.toFixed(2);
-          const bounds = root.getBoundingClientRect();
-          const tooltipX = Math.min(Math.max(event.clientX - bounds.left + 14, 12), bounds.width - 140);
-          const tooltipY = Math.max(event.clientY - bounds.top - 54, 12);
+          tooltip.innerHTML =
+            "<strong>" + point.label + "</strong><br>" +
+            "Close: $" + point.close.toFixed(2) + "<br>" +
+            "Cursor: $" + cursorPrice.toFixed(2);
+          const rootBounds = root.getBoundingClientRect();
+          const tooltipX = Math.min(Math.max(event.clientX - rootBounds.left + 14, 12), rootBounds.width - 160);
+          const tooltipY = Math.max(event.clientY - rootBounds.top - 68, 12);
           tooltip.style.left = tooltipX + "px";
           tooltip.style.top = tooltipY + "px";
         }
@@ -436,6 +471,7 @@
           focusX.setAttribute("hidden", "hidden");
           focusY.setAttribute("hidden", "hidden");
           focusDot.setAttribute("hidden", "hidden");
+          focusPriceTag.setAttribute("hidden", "hidden");
           tooltip.hidden = true;
         });
       }

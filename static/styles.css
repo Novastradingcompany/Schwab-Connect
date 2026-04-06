@@ -963,6 +963,18 @@ th.sortable[data-sort-dir="desc"]::after {
   stroke-dasharray: 4 4;
 }
 
+.spread-chart-cursor-box {
+  fill: rgba(14, 19, 26, 0.92);
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 1;
+}
+
+.spread-chart-cursor-label {
+  fill: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .spread-chart-legend {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
