@@ -1,6 +1,6 @@
 # Nova Schwab Manual
 
-Last updated: 2026-03-18
+Last updated: 2026-04-06
 
 ## 1) What This App Does
 
@@ -112,6 +112,8 @@ This is the main strategy scanner page.
 - Shows a research snapshot for the symbol
 - Shows market regime context
 - Supports Nova actions for the full chain or a selected row
+- Shows a workflow-first layout with `Setup`, `Research`, `Nova`, and `Results` jump links
+- Uses a live quote for the displayed spot when available instead of relying only on the chain payload
 
 ### Nova actions on this page
 
@@ -129,6 +131,11 @@ For `Bull Put` and `Bear Call`, each row includes an `Open` link in the `Sim` co
 - `Mid` uses midpoint pricing
 - `Natural` uses bid/ask style pricing
 - `Custom limit` lets scanner math match your intended ticket credit exactly
+
+### Error handling notes
+
+- The page now tries to keep scan results visible even if research context calls fail separately.
+- If Schwab returns malformed chain rows, the scanner degrades to fewer or no results instead of crashing the page.
 
 ---
 
@@ -262,6 +269,8 @@ This is a ranking workflow separate from the options scanner.
 - Rank names by recent movement
 - Review scan errors separately
 - Add selected symbols to the watchlist
+- Reuse cached market-history work so repeated scans complete faster
+- Use bounded concurrency so the scan can cover more of the universe before timeout
 
 ### Typical inputs
 
@@ -361,6 +370,7 @@ The chart page carries over:
 The chart page shows:
 - underlying price history
 - horizontal guide lines for `Spot`, `Profit Limit`, `Breakeven`, and `Loss Limit`
+- hover crosshairs with the selected close plus a live cursor price readout on the Y axis
 - print support
 - `Back To Spread Sim`
 - `Clear`
@@ -406,6 +416,8 @@ Purpose:
 - show open + closed P/L grouped by symbol and period
 - split results into `Stocks`, `Options`, `Cash`, and `Other Assets`
 - show subtotals plus a combined total
+- start with a dashboard-style overview before the detailed tables
+- include section jump links so you can move directly to each asset block
 
 ### Filters
 
@@ -421,6 +433,7 @@ Purpose:
 - Closed rows come from Schwab transactions.
 - The page shows summary cache freshness when available.
 - If option totals look wrong, compare against `Transaction Reconcile Debug`.
+- The top overview cards reflect the current filters, not all-time totals.
 
 ---
 
@@ -530,6 +543,16 @@ This is the general chat page for advisory-only guidance.
 
 `Find Movers` uses the movers-related settings from `Alerts`.
 
+### Page layout
+
+The page now opens with:
+- session status cards
+- `Chat Log`, `Quick Actions`, and `Compose` jump links
+- a dedicated quick-action block for movers scans
+- a separate compose area for free-form prompts
+
+Use `Find Movers` when you want Nova to start from the current movers universe. Use the compose box when you already know the symbol, setup, or question you want to discuss.
+
 ---
 
 ## 20) Tools (`/tools`)
@@ -633,6 +656,10 @@ Fix:
 - reduce universe scope
 - review scan errors in `Movers Agent`
 
+Notes:
+- The movers workflows are faster than before because history fetches now run concurrently with limits.
+- If results are still thin, the bottleneck is usually Schwab endpoint quality or universe size, not local page rendering.
+
 ### D) Summary totals look wrong
 
 Cause:
@@ -652,6 +679,15 @@ Fix:
 - then copy the `TOKEN_JSON_B64` value from `Tools`
 - update Render env
 - redeploy
+
+### F) Option chain spot looks different from another Schwab view
+
+Cause:
+- the chain payload and the live quote feed may not match exactly at the same moment
+
+Fix:
+- the page now prefers the live quote when available
+- if the difference still matters, refresh once and compare against `Spread Chart` or another live quote page
 
 ---
 
