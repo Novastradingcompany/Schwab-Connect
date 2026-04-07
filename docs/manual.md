@@ -588,7 +588,7 @@ Recommended flow:
 1. Run `python connect.py`
 2. Complete the Schwab browser login and approval flow
 3. Confirm local `token.json` is updated
-4. Use `Tools` -> `Show TOKEN_JSON_B64`
+4. Run `python scripts/render_token_b64.py` or use `Tools` -> `Show TOKEN_JSON_B64`
 5. Paste that value into Render env `TOKEN_JSON_B64`
 6. Redeploy
 
