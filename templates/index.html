@@ -5,7 +5,7 @@
       <h1>Account Overview</h1>
       <p class="subtitle">Live balances pulled from Schwab.</p>
     </div>
-    <div class="pill">Status: Connected</div>
+    <div class="pill">Status: {{ "Auth required" if error else "Connected" }}</div>
   </section>
 
   {% if error %}

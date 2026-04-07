@@ -88,13 +88,22 @@
         <a class="button" href="{{ url_for('tools', check_schwab=1) }}">Run Status Check</a>
         <a class="button" href="{{ url_for('tools', send_test_email=1) }}">Send Test Email</a>
         {% if token_status %}
-          <div>Token expires in: {{ (token_status.seconds_left // 3600) }}h</div>
+          <div>Token source: {{ token_status.source }}</div>
+          {% if token_status.seconds_left >= 0 %}
+            <div>Access token expires in: {{ (token_status.seconds_left // 3600) }}h</div>
+          {% else %}
+            <div>Access token expired {{ ((0 - token_status.seconds_left) // 3600) }}h ago. Schwab should refresh it automatically if the refresh token is still valid.</div>
+          {% endif %}
         {% endif %}
         {% if status %}
           {% if status.ok %}
             <div>OK (HTTP {{ status.status_code }})</div>
           {% else %}
             <div>Error: {{ status.error }}</div>
+            {% set status_error = (status.error or "")|lower %}
+            {% if "refresh token" in status_error or "unsupported_token_type" in status_error %}
+              <div class="pl-neg">Recovery: run <code>python connect.py</code> locally, complete the Schwab login, copy the new <code>TOKEN_JSON_B64</code>, update Render env, and redeploy.</div>
+            {% endif %}
           {% endif %}
         {% endif %}
         {% if email_test_result %}

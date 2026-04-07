@@ -48,6 +48,16 @@ def public_error_message(exc, service=None, action=None):
             return "OpenAI timed out. Try again."
         return "OpenAI request failed. Try again."
     if service == "Schwab":
+        if (
+            "refresh_token_authentication_error" in text
+            or "unsupported_token_type" in text
+            or "failed refresh token authentication" in text
+            or "exception while authenticating refresh token" in text
+        ):
+            return (
+                "Schwab refresh token is invalid or expired. "
+                "Run `python connect.py` locally, complete login, update `TOKEN_JSON_B64`, and redeploy."
+            )
         if "token" in text or "auth" in text or "login" in text:
             return "Schwab authentication failed. Log in again."
         if "timeout" in text:
