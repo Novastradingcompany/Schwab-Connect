@@ -72,6 +72,24 @@
       "problemMatcher": []
     },
     {
+      "label": "Validate Python",
+      "type": "process",
+      "command": "python",
+      "args": [
+        "-m",
+        "compileall",
+        "-q",
+        "app.py",
+        "connect.py",
+        "nova",
+        "scripts/render_token_b64.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Render Token Base64",
       "type": "process",
       "command": "python",
