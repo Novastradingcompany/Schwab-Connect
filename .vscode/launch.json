@@ -1,0 +1,43 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Dashboard: Flask",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "flask",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "FLASK_APP": "app.py",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "args": [
+        "run",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8001",
+        "--debug"
+      ],
+      "jinja": true,
+      "justMyCode": true
+    },
+    {
+      "name": "Schwab Auth: connect.py",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/connect.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Start Dashboard",
+      "configurations": [
+        "Dashboard: Flask"
+      ]
+    }
+  ]
+}
