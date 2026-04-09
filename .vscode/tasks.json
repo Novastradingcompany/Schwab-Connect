@@ -42,12 +42,10 @@
       "isBackground": true,
       "problemMatcher": [
         {
-          "pattern": [
-            {
-              "regexp": "^(.*)$",
-              "message": 1
-            }
-          ],
+          "owner": "python",
+          "pattern": {
+            "regexp": "^$"
+          },
           "background": {
             "activeOnStart": true,
             "beginsPattern": ".*",
