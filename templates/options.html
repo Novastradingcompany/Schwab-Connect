@@ -202,9 +202,10 @@
             <div class="stat-note">Short-term momentum read for the setup.</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Trend Stack</div>
-            <div class="stat-value">{{ research.metrics.trend_20_50 }} / {{ research.metrics.trend_50_200 }}</div>
+            <div class="stat-label">Regime</div>
+            <div class="stat-value">{{ research.metrics.regime_label }}</div>
             <div class="stat-note">
+              {{ research.metrics.regime_note }}
               SMA {{ research.metrics.sma20 }} / {{ research.metrics.sma50 }} / {{ research.metrics.sma200 }}
             </div>
           </div>
@@ -216,11 +217,13 @@
   {% if market_research %}
     <section class="card">
       <div class="card-title">Market Regime</div>
+      <div class="card-meta">20/50 is the short-term trend. 50/200 is the long-term trend. A row like <strong>bear / bull</strong> means a short-term pullback inside a longer-term bull market.</div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Symbol</th>
+              <th>Regime</th>
               <th>Last</th>
               <th>5D</th>
               <th>20D</th>
@@ -233,6 +236,12 @@
             {% for row in market_research %}
               <tr>
                 <td>{{ row.symbol }}</td>
+                <td>
+                  {{ row.metrics.regime_label if row.metrics }}
+                  {% if row.metrics and row.metrics.regime_note %}
+                    <div class="stat-note">{{ row.metrics.regime_note }}</div>
+                  {% endif %}
+                </td>
                 <td>{{ row.metrics.last if row.metrics }}</td>
                 <td>
                   {% if row.metrics and row.metrics.ret_5d is not none %}

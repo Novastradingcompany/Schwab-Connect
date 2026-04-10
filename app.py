@@ -608,6 +608,20 @@ def compute_trend_metrics(closes):
     sma20 = sma(20)
     sma50 = sma(50)
     sma200 = sma(200)
+    trend_20_50 = "bull" if sma20 and sma50 and sma20 > sma50 else "bear"
+    trend_50_200 = "bull" if sma50 and sma200 and sma50 > sma200 else "bear"
+    if trend_20_50 == "bull" and trend_50_200 == "bull":
+        regime_label = "Bull market"
+        regime_note = "Short-term and long-term trends are both bullish."
+    elif trend_20_50 == "bear" and trend_50_200 == "bear":
+        regime_label = "Bear market"
+        regime_note = "Short-term and long-term trends are both bearish."
+    elif trend_20_50 == "bear" and trend_50_200 == "bull":
+        regime_label = "Bull market pullback"
+        regime_note = "Long-term trend is bullish, but short-term momentum is pulling back."
+    else:
+        regime_label = "Bear market rally"
+        regime_note = "Long-term trend is bearish, but short-term momentum is rebounding."
     return {
         "last": last,
         "ret_5d": pct_change(5),
@@ -616,8 +630,10 @@ def compute_trend_metrics(closes):
         "sma20": sma20,
         "sma50": sma50,
         "sma200": sma200,
-        "trend_20_50": "bull" if sma20 and sma50 and sma20 > sma50 else "bear",
-        "trend_50_200": "bull" if sma50 and sma200 and sma50 > sma200 else "bear",
+        "trend_20_50": trend_20_50,
+        "trend_50_200": trend_50_200,
+        "regime_label": regime_label,
+        "regime_note": regime_note,
     }
 
 
