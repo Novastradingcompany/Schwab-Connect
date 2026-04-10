@@ -611,17 +611,17 @@ def compute_trend_metrics(closes):
     trend_20_50 = "bull" if sma20 and sma50 and sma20 > sma50 else "bear"
     trend_50_200 = "bull" if sma50 and sma200 and sma50 > sma200 else "bear"
     if trend_20_50 == "bull" and trend_50_200 == "bull":
-        regime_label = "Bull market"
-        regime_note = "Short-term and long-term trends are both bullish."
+        regime_label = "Bull put setup"
+        regime_note = "Short-term and long-term trends are bullish. Favor bull puts."
     elif trend_20_50 == "bear" and trend_50_200 == "bear":
-        regime_label = "Bear market"
-        regime_note = "Short-term and long-term trends are both bearish."
+        regime_label = "Bear call setup"
+        regime_note = "Short-term and long-term trends are bearish. Favor bear calls."
     elif trend_20_50 == "bear" and trend_50_200 == "bull":
-        regime_label = "Bull market pullback"
-        regime_note = "Long-term trend is bullish, but short-term momentum is pulling back."
+        regime_label = "Bull put setup, but wait for strength"
+        regime_note = "Long-term trend is bullish, but short-term momentum is weak. Prefer bull puts after the pullback settles."
     else:
-        regime_label = "Bear market rally"
-        regime_note = "Long-term trend is bearish, but short-term momentum is rebounding."
+        regime_label = "Bear call setup, but wait for weakness"
+        regime_note = "Long-term trend is bearish, but short-term momentum is bouncing. Prefer bear calls after the rally fades."
     return {
         "last": last,
         "ret_5d": pct_change(5),
