@@ -188,6 +188,7 @@ def fetch_option_chain(symbol, *, get_client, schwab_response, cache, cache_ttl,
     response = schwab_response(
         lambda: client.get_option_chain(symbol, include_underlying_quote=True),
         "get_option_chain",
+        allow_statuses={502},
     )
     if response.status_code == 502:
         body = ""
@@ -205,6 +206,16 @@ def fetch_option_chain(symbol, *, get_client, schwab_response, cache, cache_ttl,
                 ),
                 "get_option_chain_limited",
             )
+        else:
+            try:
+                response.raise_for_status()
+            except Exception as exc:
+                raise ExternalServiceError(
+                    "Schwab",
+                    "get_option_chain",
+                    "Schwab is temporarily unavailable while get_option_chain. Try again shortly.",
+                    original=exc,
+                ) from exc
     try:
         data = response.json()
     except Exception as exc:

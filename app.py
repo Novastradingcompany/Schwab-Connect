@@ -490,6 +490,13 @@ def _handle_route_error(exc, context, service=None, action=None):
     return public_error_message(exc, service=service, action=action)
 
 
+def _response_status_code(response):
+    try:
+        return int(getattr(response, "status_code", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def schwab_request(action, context):
     last_exc = None
     for attempt in range(3):
@@ -513,17 +520,19 @@ def schwab_request(action, context):
     raise wrapped from last_exc
 
 
-def schwab_response(action, context):
+def schwab_response(action, context, allow_statuses=None):
     response = schwab_request(action, context)
-    try:
-        response.raise_for_status()
-    except Exception as exc:
-        raise ExternalServiceError(
-            "Schwab",
-            context,
-            public_error_message(exc, service="Schwab", action=context),
-            original=exc,
-        ) from exc
+    allowed = {int(status) for status in (allow_statuses or [])}
+    if _response_status_code(response) not in allowed:
+        try:
+            response.raise_for_status()
+        except Exception as exc:
+            raise ExternalServiceError(
+                "Schwab",
+                context,
+                public_error_message(exc, service="Schwab", action=context),
+                original=exc,
+            ) from exc
     return response
 
 
