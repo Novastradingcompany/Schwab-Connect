@@ -9,6 +9,14 @@ def _score_band(value, low, high, points):
     return ((value - low) / (high - low)) * float(points)
 
 
+def _gap(value, target):
+    return max(float(target) - float(value or 0), 0.0)
+
+
+def _fmt_pct(value):
+    return f"{float(value):.1f}%"
+
+
 def evaluate_trade_quality(
     *,
     pop,
@@ -19,8 +27,13 @@ def evaluate_trade_quality(
     natural_credit=None,
     mid_credit=None,
 ):
+    pop = float(pop or 0)
+    return_on_risk = float(return_on_risk or 0)
+    distance_pct = float(distance_pct or 0)
+    credit_width_pct = float(credit_width_pct or 0)
     score = 0.0
-    notes = []
+    blockers = []
+    positives = []
 
     score += _score_band(pop, 60, 85, 25)
     score += _score_band(return_on_risk, 8, 25, 30)
@@ -30,33 +43,45 @@ def evaluate_trade_quality(
     dte_val = float(dte or 0)
     if 14 <= dte_val <= 45:
         score += 10
+        positives.append("DTE in preferred range")
     elif 7 <= dte_val <= 60:
         score += 5
-        notes.append("DTE workable, not ideal")
+        blockers.append("DTE workable, not ideal")
     else:
-        notes.append("DTE outside preferred range")
+        blockers.append("DTE outside preferred range")
 
-    if return_on_risk < 10:
-        notes.append("Reward too small for risk")
-    elif return_on_risk < 15:
-        notes.append("Reward/risk is marginal")
+    if return_on_risk < 15:
+        gap = _gap(return_on_risk, 15)
+        blockers.append(f"Needs +{_fmt_pct(gap)} return/risk")
     else:
-        notes.append("Reward/risk acceptable")
+        positives.append("Reward/risk acceptable")
 
     if credit_width_pct < 10:
-        notes.append("Credit is thin for spread width")
+        gap = _gap(credit_width_pct, 10)
+        blockers.append(f"Needs +{_fmt_pct(gap)} credit/width")
+    elif credit_width_pct >= 15:
+        positives.append("Credit is solid for width")
+
     if distance_pct < 3:
-        notes.append("Short strike is close to spot")
+        gap = _gap(distance_pct, 3)
+        blockers.append(f"Needs +{_fmt_pct(gap)} more distance")
+    elif distance_pct >= 5:
+        positives.append("Strike has good cushion")
+
     if pop < 70:
-        notes.append("POP below signal threshold")
+        gap = _gap(pop, 70)
+        blockers.append(f"Needs +{_fmt_pct(gap)} POP")
+    elif pop >= 80:
+        positives.append("POP is strong")
 
     if natural_credit is not None and mid_credit:
         fill_quality = float(natural_credit) / float(mid_credit) if float(mid_credit) > 0 else 0.0
         if fill_quality < 0.55:
             score -= 10
-            notes.append("Bid/ask fill quality is weak")
+            blockers.append("Bid/ask fill quality is weak")
         elif fill_quality >= 0.75:
             score += 5
+            positives.append("Bid/ask fill quality is acceptable")
 
     score = round(max(0.0, min(score, 100.0)), 1)
 
@@ -72,6 +97,13 @@ def evaluate_trade_quality(
         signal = "WATCH"
     else:
         signal = "PASS"
+
+    if blockers:
+        notes = blockers[:3]
+    elif positives:
+        notes = positives[:3]
+    else:
+        notes = ["No major quality edge"]
 
     return {
         "Signal": signal,
