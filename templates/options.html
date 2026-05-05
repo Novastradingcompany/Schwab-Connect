@@ -332,7 +332,7 @@
               {% endif %}
               <th>Select</th>
               {% for col in results_columns %}
-                {% if col in ["Credit (Realistic)", "Total Credit ($)", "Max Loss ($)", "POP %"] %}
+                {% if col in ["Credit (Realistic)", "Total Credit ($)", "Max Loss ($)", "POP %", "Quality Score", "Return/Risk %", "Credit/Width %", "Distance %"] %}
                   <th class="sortable" data-sort="number">{{ col }}</th>
                 {% else %}
                   <th>{{ col }}</th>
@@ -352,7 +352,11 @@
                 {% endif %}
                 <td><input type="radio" name="trade_index" value="{{ loop.index0 }}"></td>
                 {% for col in results_columns %}
-                  <td>{{ row[col] }}</td>
+                  {% if col == "Signal" %}
+                    <td><span class="signal-badge signal-{{ row[col]|lower }}">{{ row[col] }}</span></td>
+                  {% else %}
+                    <td>{{ row[col] }}</td>
+                  {% endif %}
                 {% endfor %}
               </tr>
             {% endfor %}

@@ -2,6 +2,7 @@ import logging
 import pandas as pd
 
 from nova.core.math_utils import calc_credit, calc_max_loss, calc_breakeven, calc_pop, bs_delta
+from nova.core.trade_quality import evaluate_trade_quality
 
 logging.basicConfig(format="%(message)s", level=logging.WARNING)
 log = logging.getLogger(__name__)
@@ -114,7 +115,21 @@ def scan_bear_call(chain: pd.DataFrame,
             if max_loss_val > float(max_loss) or float(pop) < float(min_pop):
                 continue
 
+        return_on_risk = (total_credit / max_loss_val * 100.0) if max_loss_val > 0 else 0.0
+        credit_width_pct = (credit_per_contract / (width * 100.0) * 100.0) if width > 0 else 0.0
+        distance_pct = abs(float(sell_leg['strike']) - float(spot_price)) / float(spot_price) * 100
+        quality = evaluate_trade_quality(
+            pop=float(pop),
+            return_on_risk=return_on_risk,
+            distance_pct=distance_pct,
+            credit_width_pct=credit_width_pct,
+            dte=dte,
+            natural_credit=credit_natural,
+            mid_credit=credit_mid,
+        )
+
         trades.append({
+            **quality,
             "Strategy": "Bear Call Vertical",
             "Expiry": expiry,
             "DTE": int(dte),
@@ -126,7 +141,7 @@ def scan_bear_call(chain: pd.DataFrame,
             "Max Loss ($)": round(max_loss_val, 2),
             "POP %": round(float(pop), 1),
             "Breakeven": round(float(breakeven), 2),
-            "Distance %": round(abs(float(sell_leg['strike']) - float(spot_price)) / float(spot_price) * 100, 2),
+            "Distance %": round(distance_pct, 2),
             "Delta": delta_raw if delta_raw is not None else delta_calc,
             "Implied Vol": round(iv_raw, 3) if isinstance(iv_raw, (int, float)) else iv_raw,
             "Contracts": int(contracts),

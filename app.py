@@ -3034,7 +3034,7 @@ def format_results(df):
     view = df.copy()
 
     money_cols = ["Credit (Realistic)", "Credit (Mid $)", "Credit (Natural $)", "Total Credit ($)", "Max Loss ($)", "Breakeven", "Spot"]
-    percent_cols = ["POP %", "Distance %"]
+    percent_cols = ["POP %", "Distance %", "Return/Risk %", "Credit/Width %"]
 
     for col in money_cols:
         if col in view.columns:
@@ -5169,7 +5169,11 @@ def nova_options():
                 f"max_loss={trade.get('Max Loss ($)')}, "
                 f"contracts={trade.get('Contracts')}, "
                 f"breakeven={trade.get('Breakeven')}, "
-                f"pop={trade.get('POP %')}"
+                f"pop={trade.get('POP %')}, "
+                f"signal={trade.get('Signal')}, "
+                f"quality_score={trade.get('Quality Score')}, "
+                f"return_on_risk={trade.get('Return/Risk %')}, "
+                f"quality_notes={trade.get('Quality Notes')}"
             )
             context = (
                 f"Symbol: {params['symbol']}, spot: {spot_price}, cash_balance={params['cash_balance']}, trade: {trade}. "

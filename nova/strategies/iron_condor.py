@@ -2,6 +2,7 @@ import re
 import logging
 import pandas as pd
 
+from nova.core.trade_quality import evaluate_trade_quality
 from nova.strategies.bull_put import scan_bull_put
 from nova.strategies.bear_call import scan_bear_call
 
@@ -103,7 +104,18 @@ def scan_iron_condor(chains: dict,
                 if max_loss_total > float(max_loss) or pop < float(min_pop):
                     continue
 
+            return_on_risk = (total_credit / max_loss_total * 100.0) if max_loss_total > 0 else 0.0
+            credit_width_pct = (total_credit_pc / (max_width_leg * 100.0) * 100.0) if max_width_leg > 0 else 0.0
+            quality = evaluate_trade_quality(
+                pop=pop,
+                return_on_risk=return_on_risk,
+                distance_pct=distance_pct,
+                credit_width_pct=credit_width_pct,
+                dte=dte,
+            )
+
             trades.append({
+                **quality,
                 "Strategy": "Iron Condor",
                 "Expiry": expiry,
                 "DTE": int(dte),

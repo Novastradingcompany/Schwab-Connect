@@ -754,6 +754,33 @@ th.sortable[data-sort-dir="desc"]::after {
   color: var(--accent-dark);
 }
 
+.signal-badge {
+  display: inline-flex;
+  align-items: center;
+  min-width: 58px;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.signal-take {
+  background: rgba(29, 126, 84, 0.14);
+  color: #155f40;
+}
+
+.signal-watch {
+  background: rgba(181, 117, 23, 0.16);
+  color: #7a4b06;
+}
+
+.signal-pass {
+  background: rgba(152, 55, 48, 0.12);
+  color: #8a2f2a;
+}
+
 @media (max-width: 720px) {
   .topbar {
     padding: 14px 16px;
