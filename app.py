@@ -14,6 +14,7 @@ import io
 import re
 import math
 import shutil
+import secrets
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -87,6 +88,7 @@ TICKETS_PATH = _data_file("tickets.json")
 TRADE_JOURNAL_PATH = _data_file("trade_journal.json")
 MONITOR_STATE_PATH = _data_file("monitor_state.json")
 ERROR_LOG_PATH = _data_file("error_log.json")
+TOKEN_FILE_PATH = os.getenv("TOKEN_PATH") or _data_file("token.json")
 SP500_PATH = os.path.join("nova-options-scanner-main", "nova-options-scanner-main", "sp500_symbols.json")
 OPTIONABLE_UNIVERSE_PATH = "optionable_universe.json"
 MOVERS_SNAPSHOT_PATH = _data_file("movers_snapshot.json")
@@ -1324,6 +1326,10 @@ def _reset_schwab_client():
     _CLIENT = None
 
 
+def _get_token_path():
+    return TOKEN_FILE_PATH
+
+
 def _is_schwab_auth_error(exc):
     if isinstance(exc, ExternalServiceError):
         original = exc.original or exc
@@ -1365,7 +1371,7 @@ def get_client():
 
 
 def ensure_token_file():
-    token_path = os.getenv("TOKEN_PATH", "token.json")
+    token_path = _get_token_path()
     raw_file = None
     if os.path.exists(token_path):
         try:
@@ -1792,7 +1798,7 @@ def fetch_option_chain(symbol):
 
 
 def get_token_status():
-    token_path = os.getenv("TOKEN_PATH", "token.json")
+    token_path = _get_token_path()
     try:
         raw_file = None
         if os.path.exists(token_path):
@@ -3053,26 +3059,58 @@ def format_results(df):
 
 @app.route("/callback")
 def callback():
-    from schwab.auth import easy_client
+    from schwab.auth import OAuth2Client, __fetch_and_register_token_from_redirect
 
     api_key = _get_env("SCHWAB_API_KEY")
     app_secret = _get_env("SCHWAB_APP_SECRET")
     callback_url = _get_env("SCHWAB_CALLBACK_URL")
-    token_path = "token.json"
+    token_path = _get_token_path()
 
     try:
-        client = easy_client(
-            api_key=api_key,
-            app_secret=app_secret,
-            callback_url=callback_url,
-            token_path=token_path,
+        expected_state = session.get("schwab_oauth_state")
+        returned_state = request.args.get("state")
+        if not expected_state or returned_state != expected_state:
+            raise RuntimeError("Schwab callback state did not match. Start the login from Tools again.")
+        if request.args.get("error"):
+            raise RuntimeError(request.args.get("error_description") or request.args.get("error"))
+
+        query_string = request.query_string.decode("utf-8")
+        redirected_url = callback_url + (f"?{query_string}" if query_string else "")
+        oauth = OAuth2Client(api_key, redirect_uri=callback_url)
+        __fetch_and_register_token_from_redirect(
+            oauth,
+            redirected_url,
+            api_key,
+            app_secret,
+            token_path,
+            token_write_func=None,
+            asyncio=False,
             enforce_enums=False,
         )
+        session.pop("schwab_oauth_state", None)
+        _reset_schwab_client()
         session["authed"] = True
-        return redirect(url_for("index"))
+        return redirect(url_for("tools", schwab_auth="ok"))
     except Exception as exc:
         log_error(exc, context="callback")
         return "Callback error: Schwab authentication failed. Check the callback configuration and try again.", 500
+
+
+@app.route("/schwab/login")
+@login_required
+def schwab_login():
+    from schwab.auth import OAuth2Client
+
+    api_key = _get_env("SCHWAB_API_KEY")
+    callback_url = _get_env("SCHWAB_CALLBACK_URL")
+    state = secrets.token_urlsafe(24)
+    session["schwab_oauth_state"] = state
+    oauth = OAuth2Client(api_key, redirect_uri=callback_url)
+    authorization_url, _ = oauth.create_authorization_url(
+        "https://api.schwabapi.com/v1/oauth/authorize",
+        state=state,
+    )
+    return redirect(authorization_url)
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -4757,7 +4795,7 @@ def tools():
         errors = []
     if request.args.get("show_token_b64") == "1":
         try:
-            token_path = os.getenv("TOKEN_PATH", "token.json")
+            token_path = _get_token_path()
             raw_file = None
             if os.path.exists(token_path):
                 try:

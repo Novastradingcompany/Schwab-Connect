@@ -75,15 +75,17 @@
       <summary>Schwab Token Workflow</summary>
       <div class="details-body">
         <div>
-          Do not rely on an in-app token refresh button. Schwab auth is a browser-based OAuth flow and the reliable path is to run <code>connect.py</code> locally, then update Render env <code>TOKEN_JSON_B64</code>.
+          Schwab requires a browser OAuth approval when the refresh token expires. Use the deployed login first; it writes the new token to the app token file. Keep <code>TOKEN_JSON_B64</code> as a fallback seed for new deploys.
         </div>
         <div><strong>Recommended flow:</strong></div>
-        <div>1. Run <code>python connect.py</code> on your local machine.</div>
-        <div>2. Complete the Schwab login and approval flow in the browser.</div>
-        <div>3. Confirm your local <code>token.json</code> is updated.</div>
-        <div>4. Use <code>Show TOKEN_JSON_B64 Value</code> to generate the Render-safe base64 string.</div>
-        <div>5. Paste that value into Render env <code>TOKEN_JSON_B64</code>.</div>
-        <div>6. Redeploy the service.</div>
+        <div>1. Click <code>Reauthorize Schwab</code> from this page.</div>
+        <div>2. Complete the Schwab login and approval flow.</div>
+        <div>3. Return here and run a status check.</div>
+        <div>4. Use <code>Show TOKEN_JSON_B64 Value</code> only when you need to update Render env for a cold deploy.</div>
+        {% if request.args.get("schwab_auth") == "ok" %}
+          <div class="pl-pos">Schwab authorization completed and token file was updated.</div>
+        {% endif %}
+        <a class="button" href="{{ url_for('schwab_login') }}">Reauthorize Schwab</a>
         <a class="button" href="{{ url_for('tools', show_token_b64=1) }}">Show TOKEN_JSON_B64 Value</a>
         <a class="button" href="{{ url_for('tools', check_schwab=1) }}">Run Status Check</a>
         <a class="button" href="{{ url_for('tools', send_test_email=1) }}">Send Test Email</a>
@@ -102,7 +104,7 @@
             <div>Error: {{ status.error }}</div>
             {% set status_error = (status.error or "")|lower %}
             {% if "refresh token" in status_error or "unsupported_token_type" in status_error %}
-              <div class="pl-neg">Recovery: run <code>python connect.py</code> locally, complete the Schwab login, copy the new <code>TOKEN_JSON_B64</code>, update Render env, and redeploy.</div>
+              <div class="pl-neg">Recovery: click <code>Reauthorize Schwab</code>, complete the Schwab login, then run another status check.</div>
             {% endif %}
           {% endif %}
         {% endif %}

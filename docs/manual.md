@@ -576,23 +576,29 @@ Use this page for system health, exports, and operational actions.
 - open transaction reconcile debug
 - show `TOKEN_JSON_B64`
 - copy `TOKEN_JSON_B64`
+- reauthorize Schwab from the deployed app
 - run Schwab status check
 - send test email
 - clear error log
 
 ### Schwab token workflow
 
-Use `Tools` to follow the token instructions and generate `TOKEN_JSON_B64`, but run the actual OAuth refresh locally.
+Use `Tools` to start the Schwab OAuth flow from the deployed app. Schwab still requires a browser approval when the refresh token expires, but the deployed flow writes the new token directly to the app token file.
 
 Recommended flow:
+1. Open `Tools`
+2. Click `Reauthorize Schwab`
+3. Complete the Schwab browser login and approval flow
+4. Return to `Tools`
+5. Run `Run Status Check`
+6. Use `Show TOKEN_JSON_B64` only when you need to update Render env for a cold deploy
+
+Local fallback:
 1. Run `python connect.py`
 2. Complete the Schwab browser login and approval flow
-3. Confirm local `token.json` is updated
-4. Run `python scripts/render_token_b64.py` or use `Tools` -> `Show TOKEN_JSON_B64`
-5. Paste that value into Render env `TOKEN_JSON_B64`
-6. Redeploy
-
-Do not rely on an in-app token refresh button for Schwab OAuth.
+3. Run `python scripts/render_token_b64.py`
+4. Paste that value into Render env `TOKEN_JSON_B64`
+5. Redeploy
 
 Use `Tools` first when data looks stale, alerts appear quiet, or token state is unclear.
 
@@ -620,6 +626,7 @@ Without persistent storage, JSON-backed app data resets on redeploy.
 - `monitor_state.json`
 - `error_log.json`
 - `movers_snapshot.json`
+- `token.json`
 
 ---
 
@@ -631,11 +638,11 @@ Cause:
 - expired or invalid token payload
 
 Fix:
-1. Run `python connect.py`
-2. generate a fresh token
-3. use `Tools` -> `Show TOKEN_JSON_B64`
-4. update Render env
-5. redeploy
+1. Open `Tools`
+2. Click `Reauthorize Schwab`
+3. Complete the Schwab login
+4. Run `Run Status Check`
+5. If the app has no persistent disk, use `Show TOKEN_JSON_B64`, update Render env, and redeploy
 
 ### B) Scanner credit does not match Schwab ticket
 
